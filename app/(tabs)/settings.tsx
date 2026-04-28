@@ -14,6 +14,10 @@ import UpgradeButton from "../../components/UpgradeButton";
 import { refreshUserContext } from "../../services/contextService";
 import api from "../../services/api";
 import { LucidTheme } from "../../constants/lucidTheme";
+import { router } from "expo-router";
+import { clearAuthToken } from "../../services/api";
+import { syncEnforcementSettings } from "../../services/nativeBridge";
+import { syncEnforcementDecision } from "../../services/enforcementSync";
 
 export default function SettingsScreen() {
   const [settings, setSettings] = useState<any>(null);
@@ -35,6 +39,9 @@ export default function SettingsScreen() {
     }
   }
 
+  /* =========================
+     SAVE (NON-ENFORCEMENT ONLY)
+  ========================= */
   async function save() {
     try {
       setSaving(true);
@@ -58,22 +65,12 @@ export default function SettingsScreen() {
           preferredStudyTimes:
             settings.schedulingPolicy?.preferredStudyTimes || [],
         },
-        screenLockPolicy: {
-          enabled: Boolean(settings.screenLockPolicy?.enabled),
-          strictMode: Boolean(settings.screenLockPolicy?.strictMode),
-        },
         socialPolicy: {
           dailyLimitMinutes: Number(settings.socialPolicy?.dailyLimitMinutes),
           sessionLimitMinutes: Number(settings.socialPolicy?.sessionLimitMinutes),
           cooldownMinutes: Number(settings.socialPolicy?.cooldownMinutes),
         },
       };
-
-      if (role === "solo") {
-        payload.focusMode = settings.focusMode;
-      }
-
-      console.log("Saving settings payload:", payload);
 
       await updateSettings(payload);
       await refreshUserContext();
@@ -107,15 +104,17 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={styles.container}>
+      {/* HEADER */}
       <View style={styles.headerCard}>
         <Text style={styles.title}>Settings</Text>
         <Text style={styles.subtitle}>
           {role === "parent"
-            ? "Configure family-level defaults and account options"
-            : "Customize your focus and learning system"}
+            ? "Configure family-level defaults"
+            : "Customize your focus system"}
         </Text>
       </View>
 
+      {/* PLAN */}
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Plan</Text>
 
@@ -142,6 +141,102 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
+      {/* BLOCKING TOGGLE (🔥 CORE FIX) */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Blocking</Text>
+
+        <Pressable
+          disabled={saving}
+          onPress={async () => {
+            const prev = settings.screenLockPolicy?.enabled;
+            const next = !prev;
+
+            const updated = {
+              ...settings,
+              screenLockPolicy: {
+                enabled: next,
+              },
+            };
+
+            setSettings(updated);
+
+            try {
+              setSaving(true);
+
+              await updateSettings({
+                screenLockPolicy: updated.screenLockPolicy,
+              });
+
+              await syncEnforcementDecision();
+
+              await syncEnforcementSettings({
+                role,
+                enforcementMode: settings.enforcementMode || "self",
+                focusMode:
+                  role === "parent"
+                    ? settings.parentFocusMode || "soft"
+                    : settings.focusMode || "soft",
+              });
+
+            } catch (err) {
+              console.log("Toggle failed:", err);
+
+              setSettings({
+                ...settings,
+                screenLockPolicy: {
+                  enabled: prev,
+                },
+              });
+            } finally {
+              setSaving(false);
+            }
+          }}
+          style={[
+            styles.bigToggle,
+            settings.screenLockPolicy?.enabled
+              ? styles.toggleOn
+              : styles.toggleOff,
+          ]}
+        >
+          <Text style={styles.toggleText}>
+            {settings.screenLockPolicy?.enabled
+              ? "🟢 Blocking ON"
+              : "🔴 Blocking OFF"}
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* INTENSITY */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Blocking Intensity</Text>
+
+        <View style={styles.rowWrap}>
+          {["soft", "strict"].map((mode) => (
+            <Pressable
+              key={mode}
+              onPress={async () => {
+                const updated = { ...settings, focusMode: mode };
+
+                setSettings(updated);
+
+                await updateSettings({ focusMode: mode });
+
+                await syncEnforcementDecision();
+              }}
+              style={[
+                styles.modeBtn,
+                settings.focusMode === mode && styles.modeActive,
+              ]}
+            >
+              <Text style={styles.modeText}>
+                {mode.toUpperCase()}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      {/* TIMER */}
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Timer Policy</Text>
 
@@ -172,266 +267,36 @@ export default function SettingsScreen() {
             })
           }
         />
-
-        <SettingRow
-          label="Max Unlock Per Day"
-          value={settings.timerPolicy?.maxUnlockPerDay}
-          onChange={(v: string) =>
-            setSettings({
-              ...settings,
-              timerPolicy: {
-                ...settings.timerPolicy,
-                maxUnlockPerDay: Number(v),
-              },
-            })
-          }
-        />
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Card Policy</Text>
-
-        <SettingRow
-          label="Daily New Cards"
-          value={settings.cardPolicy?.dailyNewCards}
-          onChange={(v: string) =>
-            setSettings({
-              ...settings,
-              cardPolicy: {
-                ...settings.cardPolicy,
-                dailyNewCards: Number(v),
-              },
-            })
-          }
-        />
-
-        <SettingRow
-          label="Max Reviews Per Day"
-          value={settings.cardPolicy?.maxReviewsPerDay}
-          onChange={(v: string) =>
-            setSettings({
-              ...settings,
-              cardPolicy: {
-                ...settings.cardPolicy,
-                maxReviewsPerDay: Number(v),
-              },
-            })
-          }
-        />
-
-        <View style={styles.rowWrap}>
-          {["easy", "medium", "hard"].map((difficulty) => (
-            <Pressable
-              key={difficulty}
-              onPress={() =>
-                setSettings({
-                  ...settings,
-                  cardPolicy: {
-                    ...settings.cardPolicy,
-                    difficulty,
-                  },
-                })
-              }
-              style={[
-                styles.modeBtn,
-                settings.cardPolicy?.difficulty === difficulty &&
-                  styles.modeActive,
-              ]}
-            >
-              <Text style={styles.modeText}>
-                {difficulty.toUpperCase()}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
-      {role === "solo" && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Focus Mode</Text>
-
-          <Text style={styles.helper}>
-            Controls how aggressively Lucid interrupts scrolling
-          </Text>
-
-          <View style={styles.rowWrap}>
-            {["off", "soft", "strict"].map((mode) => (
-              <Pressable
-                key={mode}
-                onPress={() =>
-                  setSettings({
-                    ...settings,
-                    focusMode: mode,
-                  })
-                }
-                style={[
-                  styles.modeBtn,
-                  settings.focusMode === mode && styles.modeActive,
-                ]}
-              >
-                <Text style={styles.modeText}>
-                  {mode.toUpperCase()}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      )}
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Scheduling Policy</Text>
-
-        <View style={styles.rowWrap}>
-          {[true, false].map((enabled) => (
-            <Pressable
-              key={String(enabled)}
-              onPress={() =>
-                setSettings({
-                  ...settings,
-                  schedulingPolicy: {
-                    ...settings.schedulingPolicy,
-                    reminderEnabled: enabled,
-                  },
-                })
-              }
-              style={[
-                styles.modeBtn,
-                settings.schedulingPolicy?.reminderEnabled === enabled &&
-                  styles.modeActive,
-              ]}
-            >
-              <Text style={styles.modeText}>
-                {enabled ? "REMINDERS ON" : "REMINDERS OFF"}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <SettingRow
-          label="Reminder Minutes Before"
-          value={settings.schedulingPolicy?.reminderMinutesBefore}
-          onChange={(v: string) =>
-            setSettings({
-              ...settings,
-              schedulingPolicy: {
-                ...settings.schedulingPolicy,
-                reminderMinutesBefore: Number(v),
-              },
-            })
-          }
-        />
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Screen Lock Policy</Text>
-
-        <View style={styles.rowWrap}>
-          {[true, false].map((enabled) => (
-            <Pressable
-              key={`screen-lock-${String(enabled)}`}
-              onPress={() =>
-                setSettings({
-                  ...settings,
-                  screenLockPolicy: {
-                    ...settings.screenLockPolicy,
-                    enabled,
-                  },
-                })
-              }
-              style={[
-                styles.modeBtn,
-                settings.screenLockPolicy?.enabled === enabled &&
-                  styles.modeActive,
-              ]}
-            >
-              <Text style={styles.modeText}>
-                {enabled ? "LOCK ON" : "LOCK OFF"}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <View style={styles.rowWrap}>
-          {[true, false].map((strictMode) => (
-            <Pressable
-              key={`strict-${String(strictMode)}`}
-              onPress={() =>
-                setSettings({
-                  ...settings,
-                  screenLockPolicy: {
-                    ...settings.screenLockPolicy,
-                    strictMode,
-                  },
-                })
-              }
-              style={[
-                styles.modeBtn,
-                settings.screenLockPolicy?.strictMode === strictMode &&
-                  styles.modeActive,
-              ]}
-            >
-              <Text style={styles.modeText}>
-                {strictMode ? "STRICT LOCK" : "STANDARD LOCK"}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Social Policy</Text>
-
-        <SettingRow
-          label="Daily Limit Minutes"
-          value={settings.socialPolicy?.dailyLimitMinutes}
-          onChange={(v: string) =>
-            setSettings({
-              ...settings,
-              socialPolicy: {
-                ...settings.socialPolicy,
-                dailyLimitMinutes: Number(v),
-              },
-            })
-          }
-        />
-
-        <SettingRow
-          label="Session Limit Minutes"
-          value={settings.socialPolicy?.sessionLimitMinutes}
-          onChange={(v: string) =>
-            setSettings({
-              ...settings,
-              socialPolicy: {
-                ...settings.socialPolicy,
-                sessionLimitMinutes: Number(v),
-              },
-            })
-          }
-        />
-
-        <SettingRow
-          label="Cooldown Minutes"
-          value={settings.socialPolicy?.cooldownMinutes}
-          onChange={(v: string) =>
-            setSettings({
-              ...settings,
-              socialPolicy: {
-                ...settings.socialPolicy,
-                cooldownMinutes: Number(v),
-              },
-            })
-          }
-        />
-      </View>
-
+      {/* SAVE */}
       <Pressable onPress={save} style={styles.saveBtn}>
         <Text style={styles.saveText}>
           {saving ? "Saving..." : "Save Settings"}
         </Text>
       </Pressable>
+
+      {/* ACCOUNT */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Account</Text>
+
+        <Pressable
+          onPress={async () => {
+            await clearAuthToken();
+            router.replace("/login");
+          }}
+          style={styles.logoutBtn}
+        >
+          <Text style={styles.logoutText}>Log Out</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   );
 }
+
+/* =========================
+   STYLES
+========================= */
 
 const styles = StyleSheet.create({
   container: {
@@ -445,12 +310,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: LucidTheme.bg,
-    padding: 24,
   },
 
   loading: {
     color: "#A9BDDB",
-    textAlign: "center",
   },
 
   headerCard: {
@@ -485,20 +348,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  helper: {
-    color: "#A9BDDB",
-    marginBottom: 10,
+  planText: {
+    color: "white",
   },
 
   subLabel: {
     color: "#F8C373",
     marginTop: 16,
     fontWeight: "700",
-  },
-
-  planText: {
-    color: "white",
-    marginBottom: 10,
   },
 
   secondaryBtn: {
@@ -516,7 +373,6 @@ const styles = StyleSheet.create({
 
   rowWrap: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: 8,
     marginTop: 8,
   },
@@ -536,6 +392,27 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
+  bigToggle: {
+    padding: 18,
+    borderRadius: 14,
+    alignItems: "center",
+    marginTop: 10,
+  },
+
+  toggleOn: {
+    backgroundColor: "#1DB954",
+  },
+
+  toggleOff: {
+    backgroundColor: "#FF4D4D",
+  },
+
+  toggleText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 16,
+  },
+
   saveBtn: {
     marginTop: 10,
     marginBottom: 30,
@@ -548,5 +425,17 @@ const styles = StyleSheet.create({
   saveText: {
     color: "#fff",
     fontWeight: "800",
+  },
+
+  logoutBtn: {
+    backgroundColor: "#2A2E36",
+    padding: 14,
+    borderRadius: 12,
+  },
+
+  logoutText: {
+    color: "#FF6B6B",
+    textAlign: "center",
+    fontWeight: "700",
   },
 });

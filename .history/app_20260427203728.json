@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "ScrollTax",
+    "slug": "scrolltax",
+    "scheme": "scrolltax",
+
+    "icon": "./assets/icon.png",
+
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0e1424"
+    },
+
+    "plugins": [
+      "expo-dev-client",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-4629047096490080~8792762842",
+          "iosAppId": "ca-app-pub-4629047096490080~9722701138"
+        }
+      ]
+    ],
+
+    "ios": {
+      "bundleIdentifier": "com.yourcompany.scrolltax"
+    },
+
+    "android": {
+      "package": "com.yourcompany.scrolltax",
+
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0e1424"
+      }
+    }
+  }
+}

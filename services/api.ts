@@ -2,7 +2,7 @@ import axios from "axios";
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { InternalAxiosRequestConfig } from "axios";
-
+import * as SecureStore from "expo-secure-store";
 /* =========================
    🔥 ENV SWITCH
 ========================= */
@@ -60,6 +60,17 @@ export async function bootstrapAuthToken() {
   }
 
   return stored;
+
+}
+
+
+
+export async function clearAuthToken() {
+  try {
+    await SecureStore.deleteItemAsync("token");
+  } catch (err) {
+    console.log("Failed to clear token", err);
+  }
 }
 
 /* =========================
@@ -102,11 +113,12 @@ export async function getWastedScreen() {
 ========================= */
 
 export async function getSharedState() {
-  const [streak, mastery, context, usage] = await Promise.all([
+  const [streak, mastery, context, usage, settings] = await Promise.all([
     getStreak(),
     getMastery(),
     getContext(),
     getWastedScreen(),
+    getSettings(), // 🔥 ADD THIS
   ]);
 
   return {
@@ -114,6 +126,9 @@ export async function getSharedState() {
     mastery: mastery?.mastery || [],
     context: context?.context || null,
     usage: usage || null,
+
+    // 🔥 THIS FIXES EVERYTHING
+    settings: settings?.settings || null,
   };
 }
 

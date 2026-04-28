@@ -118,14 +118,14 @@ export default function ParentDashboard() {
          🔥 GLOBAL CONTROL
       ========================= */}
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Global Focus Mode</Text>
+        <Text style={styles.sectionTitle}>Global Blocking Intensity</Text>
 
         <Text style={styles.helper}>
-          Controls how strict enforcement is across all children
+          Controls how aggressively Lucid interrupts scrolling for all children on this account
         </Text>
 
         <View style={styles.rowWrap}>
-          {["off", "soft", "strict"].map((mode) => (
+          {["soft", "strict"].map((mode) => (
             <Pressable
               key={mode}
               onPress={() => saveParentMode(mode)}
@@ -239,10 +239,10 @@ function ChildCard({ child, reload }: any) {
         style={styles.input}
       />
 
-      <Text style={styles.label}>Focus Mode</Text>
+      <Text style={styles.label}>Blocking Intensity</Text>
 
       <View style={styles.rowWrap}>
-        {["off", "soft", "strict"].map((m) => (
+        {["soft", "strict"].map((m) => (
           <Pressable
             key={m}
             onPress={() => setMode(m)}

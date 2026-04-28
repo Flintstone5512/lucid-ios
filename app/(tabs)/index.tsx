@@ -1,11 +1,13 @@
 import { useEffect } from "react";
-import { View, ActivityIndicator } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 
-import { useRefocusStore } from "../../store/useRefocusStore";
 import { getSharedState } from "../../services/api";
+import { useRefocusStore } from "../../store/useRefocusStore";
+import { syncEnforcementSettings } from "../../services/enforcementSync";
+import { syncEnforcementDecision } from "../../services/enforcementSync";
 
-import ParentDashboard from "../parent/index";
 import UserDashboard from "../dashboard/userHome";
+import ParentDashboard from "../parent/index";
 
 export default function Home() {
   const { context, setStatePatch } = useRefocusStore();
@@ -17,8 +19,16 @@ export default function Home() {
 
         setStatePatch({
           ...state,
-          context: state.context, // 🔥 IMPORTANT
+          context: state.context,
         });
+
+        await syncEnforcementSettings({
+          role: state.context?.role || "solo",
+          enforcementMode: state.settings?.enforcementMode || "self",
+          focusMode: state.settings?.focusMode || "soft",
+        });
+
+        await syncEnforcementDecision();
       } catch (err) {
         console.log("Home load error:", err);
       }
@@ -27,7 +37,6 @@ export default function Home() {
     load();
   }, []);
 
-  // 🔥 loading state (prevents blank screen)
   if (!context) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
@@ -36,7 +45,6 @@ export default function Home() {
     );
   }
 
-  // 🔥 ROLE SWITCH
   if (context.role === "parent") {
     return <ParentDashboard />;
   }
