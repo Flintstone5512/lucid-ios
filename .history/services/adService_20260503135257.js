@@ -28,8 +28,8 @@ export function showRewardedAd(onRewardEarned) {
   } = require("react-native-google-mobile-ads");
 
   const adUnitId = Platform.select({
-    android: "ca-app-pub-4629047096490080/2812618363",
-    ios: "ca-app-pub-4629047096490080/8803311640",
+    android: "ca-app-pub-xxxx/xxxx",
+    ios: "ca-app-pub-xxxx/xxxx",
   });
 
   const rewarded = RewardedAd.createForAdRequest(adUnitId, {

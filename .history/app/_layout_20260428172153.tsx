@@ -38,7 +38,7 @@ export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [permissionsReady, setPermissionsReady] = useState(false);
 
-  const lastDeepLinkAt = useRef(0); // 🔥 debounce — prevents double firing within 1s
+  const handledDeepLink = useRef(false); // 🔥 prevents double firing
 
   const setEnforcementMode = useRefocusStore(
     (s) => s.setEnforcementMode
@@ -90,48 +90,35 @@ export default function RootLayout() {
   /* =========================
      🔥 DEEP LINK (CRITICAL FIX)
   ========================= */
-async function handleDeepLink(url: string) {
-  if (!url.includes("scrolltax://session")) return false;
 
-  const now = Date.now();
-  if (now - lastDeepLinkAt.current < 1000) return true;
-  lastDeepLinkAt.current = now;
+  async function handleDeepLink(url: string) {
+    if (!url.includes("scrolltax://session")) return false;
 
-  const { unlockedUntil } = useRefocusStore.getState();
-  if (unlockedUntil > Date.now()) {
-    console.log("[LAYOUT] Deep link ignored — active unlock until", new Date(unlockedUntil).toISOString());
-    return true;
-  }
+    if (handledDeepLink.current) return true;
+    handledDeepLink.current = true;
 
-  try {
-    console.log("🔥 Deep link triggered:", url);
+    try {
+      console.log("🔥 Deep link triggered:", url);
 
-    const res = await requestUnlock();
-    const expiresAt = res?.unlock?.expiresAt;
+      const res = await requestUnlock();
 
-    if (expiresAt) {
-      await grantAndroidUnlock(expiresAt);
-      await hideBlockingOverlay();
+      const expiresAt = res?.unlock?.expiresAt;
+
+      if (expiresAt) {
+        await grantAndroidUnlock(expiresAt);
+        await hideBlockingOverlay();
+      }
+
+      // 🔥 CRITICAL: replace, not push
+      router.replace("/session");
+
+      return true;
+    } catch (err) {
+      console.log("Deep link unlock failed:", err);
+      router.replace("/session");
+      return true;
     }
-
-    // 🔥 CRITICAL FIX: delay navigation until router is ready
-    setTimeout(() => {
-      console.log("🚀 Navigating to session...");
-      router.replace("/session");
-    }, 120);
-
-    return true;
-
-  } catch (err) {
-    console.log("Deep link unlock failed:", err);
-
-    setTimeout(() => {
-      router.replace("/session");
-    }, 120);
-
-    return true;
   }
-}
 
   /* =========================
      🔥 INIT (NOW SAFE)
@@ -142,11 +129,6 @@ async function handleDeepLink(url: string) {
 
     async function init() {
       try {
-        if (!__DEV__) {
-          const mobileAds = require("react-native-google-mobile-ads").default;
-          await mobileAds().initialize();
-        }
-
         // 🔥 STEP 0: check deep link FIRST (before anything else)
         const initialUrl = await ExpoLinking.getInitialURL();
 
@@ -167,7 +149,6 @@ async function handleDeepLink(url: string) {
         if (ok) {
           // 🔐 AUTH
           const token = await bootstrapAuthToken();
-          console.log("[LAYOUT] auth token loaded:", token ? "✅ present" : "❌ missing");
 
           if (token) {
             try {
@@ -233,11 +214,7 @@ async function handleDeepLink(url: string) {
      ⏳ LOADING
   ========================= */
 
- if (!ready) {
-  return (
-    <View style={{ flex: 1, backgroundColor: "#0e1424" }} />
-  );
-}
+  if (!ready) return null;
 
   /* =========================
      🔐 PERMISSION LOCK
@@ -316,10 +293,7 @@ async function handleDeepLink(url: string) {
   return (
     <SafeAreaProvider>
       <OnboardingProvider>
-        <Stack
-          screenOptions={{ headerShown: false }}
-          initialRouteName="index"
-        />
+        <Stack screenOptions={{ headerShown: false }} />
       </OnboardingProvider>
     </SafeAreaProvider>
   );

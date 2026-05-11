@@ -32,7 +32,7 @@ export default function SessionScreen() {
     null
   );
 
-  const { selectedDeckId, setStatePatch, streak, usage, unlockedUntil } =
+  const { selectedDeckId, setStatePatch, streak, usage } =
     useRefocusStore();
 
   useEffect(() => {
@@ -44,16 +44,7 @@ export default function SessionScreen() {
 }, []);
 
   async function load() {
-    console.log("[SESSION] load() called — selectedDeckId:", selectedDeckId, "unlockedUntil:", unlockedUntil ? new Date(unlockedUntil).toISOString() : "none");
-
-    if (unlockedUntil > Date.now()) {
-      console.log("[SESSION] Active unlock — returning to tabs");
-      router.replace("/(tabs)");
-      return;
-    }
-
     if (!selectedDeckId) {
-      console.log("[SESSION] No deck selected — showing 'Select a deck first'");
       setLoading(false);
       return;
     }
@@ -63,15 +54,10 @@ export default function SessionScreen() {
       setNoCardsMode(false);
       setNoCardsGraceUntil(null);
 
-      console.log("[SESSION] Calling getSession for deck:", selectedDeckId);
       const res = await getSession(selectedDeckId);
-      console.log("[SESSION] getSession response:", JSON.stringify(res));
-
       const safeCards = (res.cards || []).filter(Boolean);
-      console.log("[SESSION] safeCards count:", safeCards.length);
 
       if (!safeCards.length) {
-        console.log("[SESSION] No cards — entering noCardsMode, granting grace period");
         const expiresAt = new Date(
           Date.now() + NO_CARDS_GRACE_MINUTES * 60 * 1000
         ).toISOString();
@@ -86,15 +72,14 @@ export default function SessionScreen() {
         return;
       }
 
-      console.log("[SESSION] Cards loaded OK — starting session");
       setCards(safeCards);
       setIndex(0);
       setShowAnswer(false);
       setCompleted(false);
       setUnlockData(null);
       setMicroReward("");
-    } catch (err: any) {
-      console.error("[SESSION] load() FAILED:", err?.message, err?.response?.status, err?.response?.data);
+    } catch (err) {
+      console.error("Session load failed", err);
     } finally {
       setLoading(false);
     }
@@ -107,47 +92,33 @@ export default function SessionScreen() {
   useEffect(() => {
     if (!completed) return;
 
-    console.log("[SESSION] completed=true — calling handleSessionEnd in 800ms");
-    const timer = setTimeout(() => {
-      handleSessionEnd();
+    const timer = setTimeout(async () => {
+      try {
+        await reopenBlockedApp();
+      } catch (err) {
+        router.replace("/(tabs)");
+      }
     }, 800);
 
     return () => clearTimeout(timer);
   }, [completed]);
 
   async function handleSessionEnd() {
-    console.log("[SESSION] handleSessionEnd called");
     try {
       const completionRes = await api.post("/reviews/session/complete");
-      const { showAd, expiresAt } = completionRes?.data || {};
-      console.log("[SESSION] session/complete response — showAd:", showAd, "expiresAt:", expiresAt);
-
-      if (expiresAt) {
-        const expiresMs = new Date(expiresAt).getTime();
-        await grantAndroidUnlock(expiresAt);
-        setStatePatch({ unlockedUntil: expiresMs });
-        console.log("[SESSION] unlockedUntil set to", expiresAt);
-      }
-
-      // Sync native enforcement state now that the unlock exists in DB
-      await syncEnforcementDecision();
+      const { showAd } = completionRes?.data || {};
 
       if (showAd) {
-        console.log("[SESSION] showing rewarded ad");
         showRewardedAd(async () => {
-          console.log("[SESSION] ad reward earned — reopening blocked app");
           await reopenBlockedApp();
-          router.replace("/(tabs)");
         });
         return;
       }
 
       await reopenBlockedApp();
-      router.replace("/(tabs)");
-    } catch (err: any) {
-      console.error("[SESSION] handleSessionEnd FAILED:", err?.message, err?.response?.status);
+    } catch (err) {
+      console.error("Session completion failed", err);
       await reopenBlockedApp();
-      router.replace("/(tabs)");
     }
   }
 
@@ -279,6 +250,9 @@ export default function SessionScreen() {
     if (isLastCard) {
       console.log("🔥 LAST CARD — forcing exit");
 
+      setCompleted(true);
+      setUnlockData({ unlockMinutes: 1 });
+
       const expiresAt = new Date(
         Date.now() + 60 * 1000
       ).toISOString();
@@ -286,8 +260,10 @@ export default function SessionScreen() {
       await grantAndroidUnlock(expiresAt);
       await hideBlockingOverlay();
 
-      setUnlockData({ unlockMinutes: 1 });
-      setCompleted(true);
+      setTimeout(() => {
+        console.log("🚀 Returning to blocked app...");
+        reopenBlockedApp();
+      }, 150);
 
       return;
     }
@@ -307,6 +283,9 @@ export default function SessionScreen() {
     if (isLastCard) {
       console.log("⚠️ FAILSAFE LAST CARD EXIT");
 
+      setCompleted(true);
+      setUnlockData({ unlockMinutes: 1 });
+
       const expiresAt = new Date(
         Date.now() + 60 * 1000
       ).toISOString();
@@ -318,8 +297,10 @@ export default function SessionScreen() {
         console.log("⚠️ unlock fallback failed:", e);
       }
 
-      setUnlockData({ unlockMinutes: 1 });
-      setCompleted(true);
+      setTimeout(() => {
+        console.log("🚀 Returning to blocked app (failsafe)...");
+        reopenBlockedApp();
+      }, 150);
 
       return;
     }

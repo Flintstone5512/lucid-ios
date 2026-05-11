@@ -38,7 +38,7 @@ export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [permissionsReady, setPermissionsReady] = useState(false);
 
-  const lastDeepLinkAt = useRef(0); // 🔥 debounce — prevents double firing within 1s
+  const handledDeepLink = useRef(false); // 🔥 prevents double firing
 
   const setEnforcementMode = useRefocusStore(
     (s) => s.setEnforcementMode
@@ -93,15 +93,8 @@ export default function RootLayout() {
 async function handleDeepLink(url: string) {
   if (!url.includes("scrolltax://session")) return false;
 
-  const now = Date.now();
-  if (now - lastDeepLinkAt.current < 1000) return true;
-  lastDeepLinkAt.current = now;
-
-  const { unlockedUntil } = useRefocusStore.getState();
-  if (unlockedUntil > Date.now()) {
-    console.log("[LAYOUT] Deep link ignored — active unlock until", new Date(unlockedUntil).toISOString());
-    return true;
-  }
+  if (handledDeepLink.current) return true;
+  handledDeepLink.current = true;
 
   try {
     console.log("🔥 Deep link triggered:", url);
@@ -142,11 +135,6 @@ async function handleDeepLink(url: string) {
 
     async function init() {
       try {
-        if (!__DEV__) {
-          const mobileAds = require("react-native-google-mobile-ads").default;
-          await mobileAds().initialize();
-        }
-
         // 🔥 STEP 0: check deep link FIRST (before anything else)
         const initialUrl = await ExpoLinking.getInitialURL();
 
@@ -167,7 +155,6 @@ async function handleDeepLink(url: string) {
         if (ok) {
           // 🔐 AUTH
           const token = await bootstrapAuthToken();
-          console.log("[LAYOUT] auth token loaded:", token ? "✅ present" : "❌ missing");
 
           if (token) {
             try {

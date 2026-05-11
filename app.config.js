@@ -2,6 +2,13 @@ export default {
   expo: {
     name: "ScrollTax",
     slug: "scroll-tax",
+    owner: "principledwarrior",
+
+    extra: {
+      eas: {
+        projectId: "ffef0193-896d-42c0-a995-5cec0cc5e73b"
+      }
+    },
 
     ios: {
       bundleIdentifier: "com.yourapp.scrolltax",
@@ -30,7 +37,7 @@ export default {
         "react-native-google-mobile-ads",
         {
           androidAppId: "ca-app-pub-4629047096490080~8792762842",
-          iosAppId: "a-app-pub-4629047096490080~9722701138"
+          iosAppId: "ca-app-pub-4629047096490080~9722701138"
         }
       ],
 

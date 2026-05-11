@@ -9,7 +9,10 @@ export async function generateDeck(prompt: string) {
   form.append("type", "text");
   form.append("prompt", prompt);
 
-  const res = await api.post("/ai-deck", form);
+  const res = await api.post("/ai-deck", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 30000,
+  });
 
   return res.data;
 }

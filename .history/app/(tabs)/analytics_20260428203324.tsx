@@ -1,4 +1,3 @@
-import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Pressable,
@@ -130,7 +129,11 @@ if (role === "parent" && children.length === 0) {
         </Text>
 
         <Pressable
-          onPress={() => router.push("/parent")}
+          onPress={() => {
+            // 👉 Route to parent dashboard or linking flow
+            // Example:
+            // router.push("/parent")
+          }}
           style={{
             marginTop: 16,
             backgroundColor: "#D86732",

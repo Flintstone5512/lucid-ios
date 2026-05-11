@@ -1,6 +1,6 @@
 import { NativeModules, Platform } from "react-native";
 
-const isDev = false;
+const isDev = __DEV__;
 
 const {
   ScreenTimeAuthorizationModule,
@@ -233,8 +233,6 @@ export async function showBlockingOverlay(packageName = "a blocked app") {
 }
 
 export async function hideBlockingOverlay() {
-  if (isDev) return { ok: true };
-
   if (Platform.OS !== "android") return { ok: false };
 
   try {
@@ -250,8 +248,6 @@ export async function hideBlockingOverlay() {
 ========================= */
 
 export async function grantAndroidUnlock(expiresAt) {
-  if (isDev) return { ok: true };
-
   if (Platform.OS !== "android") return { ok: false };
 
   try {

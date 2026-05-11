@@ -78,7 +78,6 @@ export async function clearAuthToken() {
 ========================= */
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-   console.log("TOKEN:", token); // 🔥 ADD THIS
   if (token) {
     config.headers.set("Authorization", `Bearer ${token}`);
   }

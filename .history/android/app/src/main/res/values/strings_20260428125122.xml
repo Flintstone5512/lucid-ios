@@ -1,0 +1,4 @@
+<resources>
+  <string name="app_name">Lucid</string>
+  <string name="accessibility_service_description">"\n        Allows Lucid to monitor app usage and enforce focus rules.\n    "</string>
+</resources>

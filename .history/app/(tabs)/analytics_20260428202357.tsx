@@ -1,4 +1,3 @@
-import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Pressable,
@@ -48,103 +47,13 @@ export default function AnalyticsScreen() {
       ? selectedChild?.dashboard
       : dashboard;
 // 🔥 GUARD: parent has no children
-// 🔥 EMPTY STATE (PARENT — NO CHILDREN)
 if (role === "parent" && children.length === 0) {
   return (
-    <ScrollView style={styles.container}>
-      
-      {/* =========================
-         🔥 HEADER
-      ========================= */}
-      <View style={styles.headerCard}>
-        <Text style={styles.title}>Child Analytics</Text>
-        <Text style={styles.subtitle}>
-          Track focus, learning, and screen habits
-        </Text>
-      </View>
-
-      {/* =========================
-         🔥 MOCK PREVIEW
-      ========================= */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Preview</Text>
-
-        <View style={styles.row}>
-          <MetricCard label="🔥 Streak" value="—" />
-          <MetricCard label="⏱ Study" value="—" />
-        </View>
-
-        <View style={styles.row}>
-          <MetricCard label="📱 Wasted" value="—" />
-          <MetricCard label="⚡ Earned" value="—" />
-        </View>
-
-        <Text style={styles.helper}>
-          See how your child converts screen time into learning
-        </Text>
-      </View>
-
-      {/* =========================
-         🔥 SAMPLE TREND (FAKE DATA)
-      ========================= */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>7-Day Preview</Text>
-
-        <SimpleBar label="Mon" value={3} max={10} />
-        <SimpleBar label="Tue" value={5} max={10} />
-        <SimpleBar label="Wed" value={2} max={10} />
-        <SimpleBar label="Thu" value={6} max={10} />
-        <SimpleBar label="Fri" value={4} max={10} />
-
-        <Text style={styles.helper}>
-          This is what your child’s progress will look like
-        </Text>
-      </View>
-
-      {/* =========================
-         🔥 EXPLANATION
-      ========================= */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>What you'll unlock</Text>
-
-        <Text style={styles.helper}>
-          • Daily screen time insights{"\n"}
-          • Learning streak tracking{"\n"}
-          • Focus efficiency score{"\n"}
-          • Behavior trends over time
-        </Text>
-      </View>
-
-      {/* =========================
-         🔥 CTA
-      ========================= */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Get Started</Text>
-
-        <Text style={styles.helper}>
-          Connect your child’s device to begin tracking their activity
-        </Text>
-
-        <Text style={{ color: "#D86732", marginTop: 10 }}>
-          Most parents connect their first child in under 30 seconds
-        </Text>
-
-        <Pressable
-          onPress={() => router.push("/parent")}
-          style={{
-            marginTop: 16,
-            backgroundColor: "#D86732",
-            padding: 16,
-            borderRadius: 14,
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ fontWeight: "800", color: "#111" }}>
-            Add Your First Child
-          </Text>
-        </Pressable>
-      </View>
-    </ScrollView>
+    <View style={styles.center}>
+      <Text style={styles.loading}>
+        No children connected yet
+      </Text>
+    </View>
   );
 }
   if (!data) {
