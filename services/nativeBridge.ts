@@ -1,16 +1,13 @@
 import { NativeModules, Platform } from "react-native";
+import * as ScreenTime from "../modules/screen-time";
 
 const isDev = __DEV__;
 
 const {
-  ScreenTimeAuthorizationModule,
-  FamilyActivityPickerModule,
-  ShieldControlModule,
-  DeviceActivityMonitorModule,
   UsageAccessModule,
   OverlayPermissionModule,
   AccessibilityBridgeModule,
-  BlockingOverlayModule, // ✅ ONLY native module we rely on now
+  BlockingOverlayModule,
 } = NativeModules;
 
 /* =========================
@@ -18,89 +15,46 @@ const {
 ========================= */
 
 export async function requestIOSAuthorization() {
-  if (isDev) return { ok: true };
-
   if (Platform.OS !== "ios") return { ok: false };
-
-  return ScreenTimeAuthorizationModule?.requestAuthorization?.() || {
-    ok: false,
-  };
+  return ScreenTime.requestAuthorization();
 }
 
 export async function getIOSAuthorizationStatus() {
-  if (isDev) return { ok: true, status: "approved" };
-
-  if (Platform.OS !== "ios") return { ok: false };
-
-  return ScreenTimeAuthorizationModule?.getAuthorizationStatus?.() || {
-    ok: false,
-  };
+  if (Platform.OS !== "ios") return { ok: false, status: "unknown" };
+  return ScreenTime.getAuthorizationStatus();
 }
 
 export async function presentAppPicker() {
-  if (isDev) return { ok: true, tokens: [] };
-
   if (Platform.OS !== "ios") return { ok: false };
-
-  return FamilyActivityPickerModule?.presentAppPicker?.() || {
-    ok: false,
-  };
+  return ScreenTime.presentAppPicker();
 }
 
-export async function saveSelectedApps(tokens = []) {
-  if (isDev) return { ok: true };
-
-  if (Platform.OS !== "ios") return { ok: false };
-
-  return FamilyActivityPickerModule?.saveSelectedApps?.(tokens) || {
-    ok: false,
-  };
+export async function saveSelectedApps(_tokens = []) {
+  return { ok: true };
 }
 
 export async function getSelectedApps() {
-  if (isDev) return { ok: true, apps: [] };
-
-  if (Platform.OS !== "ios") return { ok: false };
-
-  return FamilyActivityPickerModule?.getSelectedApps?.() || {
-    ok: false,
-  };
+  return { ok: true };
 }
 
-export async function applyShield(appTokens = []) {
-  if (isDev) return { ok: true };
-
+export async function applyShield(_appTokens = []) {
   if (Platform.OS !== "ios") return { ok: true };
-
-  return ShieldControlModule?.applyShield?.(appTokens) || { ok: false };
+  return ScreenTime.applyShield();
 }
 
 export async function clearShield() {
-  if (isDev) return { ok: true };
-
   if (Platform.OS !== "ios") return { ok: true };
-
-  return ShieldControlModule?.clearShield?.() || { ok: false };
+  return ScreenTime.clearShield();
 }
 
-export async function scheduleUnlockWindow(expiresAt) {
-  if (isDev) return { ok: true };
-
+export async function scheduleUnlockWindow(expiresAt: number) {
   if (Platform.OS !== "ios") return { ok: false };
-
-  return ShieldControlModule?.scheduleUnlockWindow?.(expiresAt) || {
-    ok: false,
-  };
+  const minutes = Math.max(1, Math.round((expiresAt - Date.now()) / 60000));
+  return ScreenTime.unlockForMinutes(minutes);
 }
 
 export async function startMonitoringBlockedApps() {
-  if (isDev) return { ok: true };
-
-  if (Platform.OS !== "ios") return { ok: false };
-
-  return DeviceActivityMonitorModule?.startMonitoringBlockedApps?.() || {
-    ok: false,
-  };
+  return { ok: true };
 }
 
 /* =========================

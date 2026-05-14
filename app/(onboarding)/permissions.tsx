@@ -50,9 +50,16 @@ export default function PermissionsScreen() {
   ----------------------------- */
 
   async function enableIOS() {
-    const res = await requestIOSAuthorization();
-    if (res.ok) {
-      setPermissions({ iosAuthorized: true });
+    try {
+      const res = await requestIOSAuthorization();
+      console.log("iOS auth result:", JSON.stringify(res));
+      if (res.ok) {
+        setPermissions({ iosAuthorized: true });
+      } else {
+        Alert.alert("Screen Time", res.error ?? `Status: ${res.status ?? "unknown"}`);
+      }
+    } catch (err: any) {
+      Alert.alert("Screen Time Error", err.message ?? "Unknown error");
     }
   }
 

@@ -4,6 +4,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useRef, useState } from "react";
 import {
   AppState,
+  Platform,
   Pressable,
   Linking as RNLinking,
   Text,
@@ -22,6 +23,8 @@ import { useRefocusStore } from "../store/useRefocusStore";
 import { ensurePermissions } from "../utils/ensurePermissions";
 
 import {
+  applyShield,
+  getIOSAuthorizationStatus,
   grantAndroidUnlock,
   hasOverlayPermission,
   hasUsageAccess,
@@ -37,6 +40,7 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [permissionsReady, setPermissionsReady] = useState(false);
+  const [iosScreenTimeChecked, setIosScreenTimeChecked] = useState(false);
 
   const lastDeepLinkAt = useRef(0); // 🔥 debounce — prevents double firing within 1s
 
@@ -213,6 +217,30 @@ async function handleDeepLink(url: string) {
       sub.remove();
     };
   }, [setEnforcementMode]);
+
+  /* =========================
+     🔥 iOS SCREEN TIME CHECK
+  ========================= */
+
+  useEffect(() => {
+    if (!ready || iosScreenTimeChecked || Platform.OS !== "ios") return;
+    setIosScreenTimeChecked(true);
+
+    async function checkIOSScreenTime() {
+      try {
+        const authStatus = await getIOSAuthorizationStatus();
+        if (authStatus?.status === "approved") {
+          applyShield().catch(() => {});
+        } else {
+          router.replace("/screens/IOSScreenTimeSetupScreen");
+        }
+      } catch (err) {
+        console.log("iOS Screen Time check failed:", err);
+      }
+    }
+
+    checkIOSScreenTime();
+  }, [ready, iosScreenTimeChecked]);
 
   /* =========================
      🔁 RECHECK PERMISSIONS

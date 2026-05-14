@@ -2,6 +2,7 @@ export default {
   expo: {
     name: "ScrollTax",
     slug: "scroll-tax",
+    scheme: "scroll-tax",
     owner: "principledwarrior",
 
     extra: {

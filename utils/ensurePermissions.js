@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import {
     hasOverlayPermission,
     hasUsageAccess,
@@ -8,6 +9,8 @@ import {
 } from "../services/nativePermissions";
 
 export async function ensurePermissions() {
+  if (Platform.OS === "ios") return true;
+
   const access = await isAccessibilityEnabled();
   const overlay = await hasOverlayPermission();
   const usage = await hasUsageAccess();
