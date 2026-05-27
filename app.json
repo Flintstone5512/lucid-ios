@@ -24,7 +24,8 @@
     ],
 
     "ios": {
-      "bundleIdentifier": "com.yourcompany.scrolltax"
+      "bundleIdentifier": "com.yourcompany.scrolltax",
+      "deploymentTarget": "16.0"
     },
 
     "android": {
