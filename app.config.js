@@ -11,8 +11,13 @@ export default {
       }
     },
 
+    autolinking: {
+      searchPaths: ["./modules"]
+    },
+
     ios: {
       bundleIdentifier: "com.yourapp.scrolltax",
+      deploymentTarget: "16.0",
       entitlements: {
         "com.apple.developer.family-controls": true,
         "com.apple.security.application-groups": [
@@ -33,7 +38,15 @@ export default {
     plugins: [
       "expo-dev-client",
 
-      // ✅ ADD THIS BLOCK
+      [
+        "expo-build-properties",
+        {
+          ios: {
+            deploymentTarget: "16.0"
+          }
+        }
+      ],
+
       [
         "react-native-google-mobile-ads",
         {
