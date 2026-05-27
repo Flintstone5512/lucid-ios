@@ -17,7 +17,7 @@ export default {
 
     ios: {
       bundleIdentifier: "com.yourapp.scrolltax",
-      deploymentTarget: "16.0",
+      deploymentTarget: "16.4",
       entitlements: {
         "com.apple.developer.family-controls": true,
         "com.apple.security.application-groups": [
@@ -42,7 +42,7 @@ export default {
         "expo-build-properties",
         {
           ios: {
-            deploymentTarget: "16.0"
+            deploymentTarget: "16.4"
           }
         }
       ],

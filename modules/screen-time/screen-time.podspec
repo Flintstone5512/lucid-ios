@@ -4,7 +4,7 @@ Pod::Spec.new do |s|
   s.summary        = 'Local Expo module for iOS Screen Time / FamilyControls'
   s.author         = ''
   s.homepage       = 'https://github.com'
-  s.platforms      = { :ios => '16.0' }
+  s.platforms      = { :ios => '16.4' }
   s.source         = { :path => '.' }
   s.source_files   = 'ios/**/*.swift'
   s.dependency     'ExpoModulesCore'
