@@ -15,6 +15,14 @@
     "plugins": [
       "expo-dev-client",
       [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.0"
+          }
+        }
+      ],
+      [
         "react-native-google-mobile-ads",
         {
           "androidAppId": "ca-app-pub-4629047096490080~8792762842",
