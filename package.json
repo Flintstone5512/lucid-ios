@@ -11,7 +11,6 @@
     "lint": "expo lint"
   },
   "dependencies": {
-    "screen-time": "file:./modules/screen-time",
     "@expo/ngrok": "^4.1.0",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -55,9 +54,5 @@
     "typescript": "~5.9.2"
   },
   "private": true,
-  "expo": {
-    "autolinking": {
-      "searchPaths": ["./modules"]
-    }
-  }
+  "expo": {}
 }
