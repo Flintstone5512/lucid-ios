@@ -34,6 +34,7 @@ import {
   requestAndroidOverlayAccess,
   requestAndroidUsageAccess,
 } from "../services/nativeBridge";
+import { checkAndClearPendingSession } from "../modules/screen-time";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -95,7 +96,7 @@ export default function RootLayout() {
      🔥 DEEP LINK (CRITICAL FIX)
   ========================= */
 async function handleDeepLink(url: string) {
-  if (!url.includes("scrolltax://session")) return false;
+  if (!url.includes("scroll-tax://session")) return false;
 
   const now = Date.now();
   if (now - lastDeepLinkAt.current < 1000) return true;
@@ -251,6 +252,19 @@ async function handleDeepLink(url: string) {
       if (state === "active") {
         console.log("🔁 App resumed — rechecking permissions");
         await refreshPermissions();
+
+        // Check if a ShieldAction triggered a study session
+        if (Platform.OS === "ios") {
+          try {
+            const result = await checkAndClearPendingSession();
+            if (result?.pending) {
+              console.log("🛡️ pendingSession detected — navigating to session");
+              setTimeout(() => router.replace("/session"), 120);
+            }
+          } catch (err) {
+            // ScreenTimeModule unavailable on simulator
+          }
+        }
       }
     });
 

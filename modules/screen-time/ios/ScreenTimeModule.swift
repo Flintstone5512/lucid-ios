@@ -96,6 +96,25 @@ public class ScreenTimeModule: Module {
       store.shield.applicationCategories = nil
       return ["ok": true, "expiresAt": expiresAt]
     }
+
+    AsyncFunction("syncSettings") { (cardsRequired: Int, unlockMinutes: Int, focusMode: String) -> [String: Any] in
+      let defaults = UserDefaults(suiteName: appGroupSuite)
+      defaults?.set(cardsRequired, forKey: "cardsRequired")
+      defaults?.set(unlockMinutes, forKey: "unlockMinutes")
+      defaults?.set(focusMode, forKey: "focusMode")
+      defaults?.synchronize()
+      return ["ok": true]
+    }
+
+    AsyncFunction("checkAndClearPendingSession") { () -> [String: Any] in
+      let defaults = UserDefaults(suiteName: appGroupSuite)
+      let pending = defaults?.bool(forKey: "pendingSession") ?? false
+      if pending {
+        defaults?.removeObject(forKey: "pendingSession")
+        defaults?.synchronize()
+      }
+      return ["ok": true, "pending": pending]
+    }
   }
 }
 

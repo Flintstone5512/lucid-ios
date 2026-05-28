@@ -55,7 +55,8 @@ export default {
         }
       ],
 
-      "./plugins/withScrollTax"
+      "./plugins/withScrollTax",
+      "./plugins/withShieldExtensions"
     ]
   }
 };

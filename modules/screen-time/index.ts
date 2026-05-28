@@ -33,3 +33,17 @@ export async function unlockForMinutes(minutes: number): Promise<{ ok: boolean; 
   if (!ScreenTimeModule) return unavailable;
   return ScreenTimeModule.unlockForMinutes(minutes);
 }
+
+export async function syncSettings(
+  cardsRequired: number,
+  unlockMinutes: number,
+  focusMode: string
+): Promise<{ ok: boolean }> {
+  if (!ScreenTimeModule) return unavailable;
+  return ScreenTimeModule.syncSettings(cardsRequired, unlockMinutes, focusMode);
+}
+
+export async function checkAndClearPendingSession(): Promise<{ ok: boolean; pending: boolean }> {
+  if (!ScreenTimeModule) return { ok: false, pending: false };
+  return ScreenTimeModule.checkAndClearPendingSession();
+}

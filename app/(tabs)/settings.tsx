@@ -18,6 +18,8 @@ import { router } from "expo-router";
 import { clearAuthToken } from "../../services/api";
 import { syncEnforcementSettings } from "../../services/nativeBridge";
 import { syncEnforcementDecision } from "../../services/enforcementSync";
+import { syncSettings as syncScreenTimeSettings } from "../../modules/screen-time";
+import { Platform } from "react-native";
 
 export default function SettingsScreen() {
   const [settings, setSettings] = useState<any>(null);
@@ -74,6 +76,15 @@ export default function SettingsScreen() {
 
       await updateSettings(payload);
       await refreshUserContext();
+
+      // Sync shield display settings to App Group for iOS extensions
+      if (Platform.OS === "ios") {
+        syncScreenTimeSettings(
+          Number(payload.timerPolicy.cardsRequired),
+          Number(payload.timerPolicy.unlockMinutes),
+          settings.focusMode || "soft"
+        ).catch(() => {});
+      }
 
       alert("Settings saved");
     } catch (err) {
