@@ -29,12 +29,15 @@ final class LucidShieldConfigurationExtension: ShieldConfigurationDataSource {
         )
     }
 
-    override func configuration(shielding application: Application) -> ShieldConfiguration {
+    override func configuration(shielding application: ApplicationToken) -> ShieldConfiguration {
         buildConfig()
     }
 
-    override func configuration(shielding application: Application,
-                                in category: ActivityCategory) -> ShieldConfiguration {
+    override func configuration(shielding category: ActivityCategoryToken) -> ShieldConfiguration {
+        buildConfig()
+    }
+
+    override func configuration(shielding webDomain: WebDomainToken) -> ShieldConfiguration {
         buildConfig()
     }
 }
