@@ -16,7 +16,7 @@ const EXTENSIONS = [
       "com.apple.shieldconfiguration",
       "LucidShieldConfigurationExtension"
     ),
-    frameworks: ["ManagedSettings", "UIKit"],
+    frameworks: ["ManagedSettings", "ManagedSettingsUI", "UIKit"],
   },
   {
     name: "LucidShieldAction",
