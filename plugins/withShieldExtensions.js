@@ -103,8 +103,6 @@ function addExtensionTargets(modConfig) {
     return modConfig;
   }
 
-  const addedExtensions = [];
-
   for (const ext of EXTENSIONS) {
     // Idempotency — skip if already added
     const alreadyExists = Object.values(nativeTargets).some(
@@ -112,11 +110,13 @@ function addExtensionTargets(modConfig) {
     );
     if (alreadyExists) continue;
 
-    // Add target (creates PBXNativeTarget + XCConfigurationList + Debug/Release configs)
+    // addTarget:
+    //  • creates PBXNativeTarget + product file reference
+    //  • automatically adds product to the main target's "Copy Files" build phase
     const target = proj.addTarget(ext.name, "app_extension", ext.name, ext.bundleId);
     const targetUUID = target.uuid;
 
-    // Build phases
+    // Build phases on the extension target
     proj.addBuildPhase(
       [`${ext.name}/${ext.swiftFile}`],
       "PBXSourcesBuildPhase",
@@ -126,7 +126,7 @@ function addExtensionTargets(modConfig) {
     proj.addBuildPhase([], "PBXFrameworksBuildPhase", "Frameworks", targetUUID);
     proj.addBuildPhase([], "PBXResourcesBuildPhase", "Resources", targetUUID);
 
-    // System frameworks
+    // System frameworks for this extension
     for (const fw of ext.frameworks) {
       proj.addFramework(`${fw}.framework`, {
         target: targetUUID,
@@ -136,7 +136,7 @@ function addExtensionTargets(modConfig) {
       });
     }
 
-    // Build settings
+    // Build settings on both Debug + Release configurations
     const configListUUID = target.pbxNativeTarget.buildConfigurationList;
     const configList = proj.pbxXCConfigurationList()[configListUUID];
     const xcBuildConfigs = proj.pbxXCBuildConfigurationSection();
@@ -156,26 +156,78 @@ function addExtensionTargets(modConfig) {
       bs.CODE_SIGN_STYLE = "Automatic";
     }
 
-    // Collect product ref for embed phase
-    const extNativeTarget = nativeTargets[targetUUID];
-    if (extNativeTarget && extNativeTarget.productReference) {
-      addedExtensions.push({
-        productRef: extNativeTarget.productReference,
-        targetUUID,
-        name: ext.name,
-      });
-    }
-
-    // Target dependency on main app (direct objects manipulation — no broken helper)
+    // PBXTargetDependency so extension builds before main app
     addTargetDependency(proj, objects, mainTargetUUID, targetUUID, ext.name);
   }
 
-  if (addedExtensions.length > 0) {
-    embedExtensions(proj, objects, mainTargetUUID, addedExtensions);
-  }
+  // Fix the "Copy Files" phase(s) that addTarget auto-created on the main target.
+  // They embed the .appex files but need dstSubfolderSpec=13 (PlugIns folder)
+  // and the RemoveHeadersOnCopy attribute to be treated as proper app extensions.
+  fixCopyPhasesForExtensions(proj, objects, mainTargetUUID);
 
   return modConfig;
 }
+
+// ─── Fix the auto-created "Copy Files" phase ─────────────────────────────────
+// addTarget() in the xcode package adds .appex products to the main target's
+// "Copy Files" phase, but with wrong settings. We find those phases and fix them
+// instead of creating a duplicate "Embed App Extensions" phase.
+
+function fixCopyPhasesForExtensions(proj, objects, mainTargetUUID) {
+  objects["PBXCopyFilesBuildPhase"] = objects["PBXCopyFilesBuildPhase"] || {};
+  objects["PBXBuildFile"] = objects["PBXBuildFile"] || {};
+
+  // Collect all .appex product file references in the project
+  const appexFileRefs = new Set();
+  const fileRefs = proj.pbxFileReferenceSection ? proj.pbxFileReferenceSection() : {};
+  for (const [uuid, ref] of Object.entries(fileRefs)) {
+    if (uuid.endsWith("_comment")) continue;
+    const fileType = ref.explicitFileType || ref.lastKnownFileType || "";
+    if (fileType.includes("app-extension")) {
+      appexFileRefs.add(uuid);
+    }
+  }
+
+  // Also collect from native targets' productReference
+  for (const [uuid, target] of Object.entries(proj.pbxNativeTargetSection())) {
+    if (uuid.endsWith("_comment")) continue;
+    if (
+      target.productType === '"com.apple.product-type.app-extension"' &&
+      target.productReference
+    ) {
+      appexFileRefs.add(target.productReference);
+    }
+  }
+
+  // Walk the main target's build phases, find any Copy Files phases with .appex products
+  const mainTarget = proj.pbxNativeTargetSection()[mainTargetUUID];
+  for (const { value: phaseUUID } of mainTarget.buildPhases || []) {
+    const phase = objects["PBXCopyFilesBuildPhase"]?.[phaseUUID];
+    if (!phase) continue;
+
+    const appexBuildFiles = (phase.files || []).filter(({ value: bfUUID }) => {
+      const bf = objects["PBXBuildFile"]?.[bfUUID];
+      return bf && appexFileRefs.has(bf.fileRef);
+    });
+
+    if (appexBuildFiles.length === 0) continue;
+
+    // Correct the phase so extensions embed properly
+    phase.dstSubfolderSpec = 13; // PlugIns/extensions folder inside .app bundle
+    phase.name = '"Embed App Extensions"';
+    objects["PBXCopyFilesBuildPhase"][`${phaseUUID}_comment`] = "Embed App Extensions";
+
+    // Ensure each .appex build file has the RemoveHeadersOnCopy attribute
+    for (const { value: bfUUID } of appexBuildFiles) {
+      const bf = objects["PBXBuildFile"][bfUUID];
+      if (bf) {
+        bf.settings = "{ ATTRIBUTES = (RemoveHeadersOnCopy, ); }";
+      }
+    }
+  }
+}
+
+// ─── Target dependency (using raw objects — no broken helper methods) ─────────
 
 function addTargetDependency(proj, objects, mainTargetUUID, extTargetUUID, extName) {
   objects["PBXContainerItemProxy"] = objects["PBXContainerItemProxy"] || {};
@@ -205,70 +257,6 @@ function addTargetDependency(proj, objects, mainTargetUUID, extTargetUUID, extNa
   if (mainTarget) {
     mainTarget.dependencies = mainTarget.dependencies || [];
     mainTarget.dependencies.push({ value: depUUID, comment: "PBXTargetDependency" });
-  }
-}
-
-function embedExtensions(proj, objects, mainTargetUUID, extensions) {
-  objects["PBXCopyFilesBuildPhase"] = objects["PBXCopyFilesBuildPhase"] || {};
-  objects["PBXBuildFile"] = objects["PBXBuildFile"] || {};
-
-  const mainTarget = proj.pbxNativeTargetSection()[mainTargetUUID];
-  const buildPhases = mainTarget.buildPhases || [];
-
-  // Find existing "Embed App Extensions" copy phase (dstSubfolderSpec 13 = PlugIns)
-  let embedPhaseUUID = null;
-  let embedPhase = null;
-
-  for (const { value: phaseUUID } of buildPhases) {
-    const phase = objects["PBXCopyFilesBuildPhase"][phaseUUID];
-    if (phase && phase.dstSubfolderSpec === 13) {
-      embedPhaseUUID = phaseUUID;
-      embedPhase = phase;
-      break;
-    }
-  }
-
-  if (!embedPhase) {
-    embedPhaseUUID = proj.generateUuid();
-    embedPhase = {
-      isa: "PBXCopyFilesBuildPhase",
-      buildActionMask: 2147483647,
-      dstPath: '""',
-      dstSubfolderSpec: 13,
-      files: [],
-      name: '"Embed App Extensions"',
-      runOnlyForDeploymentPostprocessing: 0,
-    };
-    objects["PBXCopyFilesBuildPhase"][embedPhaseUUID] = embedPhase;
-    objects["PBXCopyFilesBuildPhase"][`${embedPhaseUUID}_comment`] =
-      "Embed App Extensions";
-
-    mainTarget.buildPhases.push({
-      value: embedPhaseUUID,
-      comment: "Embed App Extensions",
-    });
-  }
-
-  for (const { productRef, name } of extensions) {
-    // Skip if already in the phase
-    const alreadyAdded = (embedPhase.files || []).some(
-      (f) => f.value === productRef
-    );
-    if (alreadyAdded) continue;
-
-    const bfUUID = proj.generateUuid();
-    objects["PBXBuildFile"][bfUUID] = {
-      isa: "PBXBuildFile",
-      fileRef: productRef,
-      settings: "{ ATTRIBUTES = (RemoveHeadersOnCopy, ); }",
-    };
-    objects["PBXBuildFile"][`${bfUUID}_comment`] =
-      `${name}.appex in Embed App Extensions`;
-
-    embedPhase.files.push({
-      value: bfUUID,
-      comment: `${name}.appex in Embed App Extensions`,
-    });
   }
 }
 
