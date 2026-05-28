@@ -201,7 +201,7 @@ function addExtensionTargets(modConfig) {
       bs.CODE_SIGN_ENTITLEMENTS = `"${ext.name}/${ext.name}.entitlements"`;
       bs.SKIP_INSTALL = "YES";
       bs.ENABLE_BITCODE = "NO";
-      bs.TARGETED_DEVICE_FAMILY = '"1"';
+      bs.TARGETED_DEVICE_FAMILY = '"1,2"';
       bs.ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "NO";
       if (teamId) {
         bs.DEVELOPMENT_TEAM = `"${teamId}"`;
