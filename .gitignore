@@ -1,5 +1,11 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
+# Signing certificates and provisioning profiles
+# certs/ dir is NOT ignored — extension profiles are committed (no private keys)
+certs/dist.p12
+certs/ScrollTax.mobileprovision
+credentials.json
+
 # dependencies
 node_modules/
 
@@ -17,6 +23,9 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+# Allow extension provisioning profiles (no private keys, needed for EAS build)
+!certs/LucidShieldAction.mobileprovision
+!certs/LucidShieldConfiguration.mobileprovision
 
 # Metro
 .metro-health-check*

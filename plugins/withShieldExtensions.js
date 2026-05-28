@@ -11,6 +11,7 @@ const EXTENSIONS = [
     name: "LucidShieldConfiguration",
     bundleId: `${MAIN_BUNDLE_ID}.LucidShieldConfiguration`,
     swiftFile: "LucidShieldConfigurationExtension.swift",
+    provisioningProfilePath: "certs/LucidShieldConfiguration.mobileprovision",
     infoPlist: buildInfoPlist(
       "com.apple.shieldconfiguration",
       "LucidShieldConfigurationExtension"
@@ -21,6 +22,7 @@ const EXTENSIONS = [
     name: "LucidShieldAction",
     bundleId: `${MAIN_BUNDLE_ID}.LucidShieldAction`,
     swiftFile: "LucidShieldActionExtension.swift",
+    provisioningProfilePath: "certs/LucidShieldAction.mobileprovision",
     infoPlist: buildInfoPlist(
       "com.apple.shieldaction.remote",
       "LucidShieldActionExtension"
@@ -28,6 +30,21 @@ const EXTENSIONS = [
     frameworks: ["ManagedSettings", "UserNotifications"],
   },
 ];
+
+function extractProfileInfo(profilePath) {
+  if (!fs.existsSync(profilePath)) return null;
+  const content = fs.readFileSync(profilePath, "binary");
+  const start = content.indexOf("<?xml");
+  const end = content.indexOf("</plist>") + "</plist>".length;
+  if (start === -1 || end === -1) return null;
+  const xml = content.slice(start, end);
+  const uuidMatch = xml.match(/<key>UUID<\/key>\s*<string>([^<]+)<\/string>/);
+  const nameMatch = xml.match(/<key>Name<\/key>\s*<string>([^<]+)<\/string>/);
+  return {
+    uuid: uuidMatch ? uuidMatch[1].trim() : null,
+    name: nameMatch ? nameMatch[1].trim() : null,
+  };
+}
 
 function buildInfoPlist(extensionPointId, principalClass) {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -152,6 +169,10 @@ function addExtensionTargets(modConfig) {
       );
     }
 
+    const projectRoot = modConfig.modRequest.projectRoot;
+    const profileAbsPath = path.join(projectRoot, ext.provisioningProfilePath);
+    const profileInfo = extractProfileInfo(profileAbsPath);
+
     for (const { value: cfgUUID } of configList.buildConfigurations) {
       const bs = xcBuildConfigs[cfgUUID].buildSettings;
       bs.SWIFT_VERSION = "5.0";
@@ -164,9 +185,15 @@ function addExtensionTargets(modConfig) {
       bs.ENABLE_BITCODE = "NO";
       bs.TARGETED_DEVICE_FAMILY = '"1"';
       bs.ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "NO";
-      bs.CODE_SIGN_STYLE = "Automatic";
       if (teamId) {
         bs.DEVELOPMENT_TEAM = `"${teamId}"`;
+      }
+      if (profileInfo && profileInfo.uuid) {
+        bs.CODE_SIGN_STYLE = "Manual";
+        bs.PROVISIONING_PROFILE = `"${profileInfo.uuid}"`;
+        bs.PROVISIONING_PROFILE_SPECIFIER = `"${profileInfo.name}"`;
+      } else {
+        bs.CODE_SIGN_STYLE = "Automatic";
       }
     }
 
