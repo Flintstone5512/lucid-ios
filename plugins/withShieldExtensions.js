@@ -141,6 +141,17 @@ function addExtensionTargets(modConfig) {
     const configList = proj.pbxXCConfigurationList()[configListUUID];
     const xcBuildConfigs = proj.pbxXCBuildConfigurationSection();
 
+    // EXPO_APPLE_TEAM_ID must be set in EAS environment variables.
+    // Without it, Xcode automatic signing fails with "requires a development team".
+    const teamId = process.env.EXPO_APPLE_TEAM_ID || "";
+    if (!teamId) {
+      console.warn(
+        "[withShieldExtensions] EXPO_APPLE_TEAM_ID env var is not set — " +
+          "extension targets will fail code signing. Add it in your EAS project " +
+          "environment variables (expo.dev → your project → Environment Variables)."
+      );
+    }
+
     for (const { value: cfgUUID } of configList.buildConfigurations) {
       const bs = xcBuildConfigs[cfgUUID].buildSettings;
       bs.SWIFT_VERSION = "5.0";
@@ -154,6 +165,9 @@ function addExtensionTargets(modConfig) {
       bs.TARGETED_DEVICE_FAMILY = '"1"';
       bs.ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "NO";
       bs.CODE_SIGN_STYLE = "Automatic";
+      if (teamId) {
+        bs.DEVELOPMENT_TEAM = `"${teamId}"`;
+      }
     }
 
     // PBXTargetDependency so extension builds before main app
