@@ -56,7 +56,7 @@ export default {
       ],
 
       "./plugins/withScrollTax",
-      "./plugins/withShieldExtensions"
+      // "./plugins/withShieldExtensions"  // temporarily disabled for install test
     ]
   }
 };
