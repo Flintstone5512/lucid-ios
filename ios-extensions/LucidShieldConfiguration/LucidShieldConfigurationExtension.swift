@@ -1,4 +1,3 @@
-import ShieldConfiguration
 import ManagedSettings
 import UIKit
 
