@@ -190,6 +190,7 @@ function addExtensionTargets(modConfig) {
       }
       if (profileInfo && profileInfo.uuid) {
         bs.CODE_SIGN_STYLE = "Manual";
+        bs.CODE_SIGN_IDENTITY = '"iPhone Distribution"';
         bs.PROVISIONING_PROFILE = `"${profileInfo.uuid}"`;
         bs.PROVISIONING_PROFILE_SPECIFIER = `"${profileInfo.name}"`;
       } else {
