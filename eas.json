@@ -18,6 +18,12 @@
         "credentialsSource": "local"
       }
     },
+    "testflight": {
+      "distribution": "store",
+      "ios": {
+        "resourceClass": "m-medium"
+      }
+    },
     "production": {
       "ios": {
         "resourceClass": "m-medium",
