@@ -191,6 +191,9 @@ function addExtensionTargets(modConfig) {
     const profileAbsPath = path.join(projectRoot, ext.provisioningProfilePath);
     const profileInfo = extractProfileInfo(profileAbsPath);
 
+    const appVersion = modConfig.version || "1.0.0";
+    const buildNumber = (modConfig.ios && modConfig.ios.buildNumber) || "1";
+
     for (const { value: cfgUUID } of configList.buildConfigurations) {
       const bs = xcBuildConfigs[cfgUUID].buildSettings;
       bs.SWIFT_VERSION = "5.0";
@@ -203,6 +206,9 @@ function addExtensionTargets(modConfig) {
       bs.ENABLE_BITCODE = "NO";
       bs.TARGETED_DEVICE_FAMILY = '"1,2"';
       bs.ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "NO";
+      bs.MARKETING_VERSION = `"${appVersion}"`;
+      bs.CURRENT_PROJECT_VERSION = `"${buildNumber}"`;
+      bs.GENERATE_INFOPLIST_FILE = "NO";
       if (teamId) {
         bs.DEVELOPMENT_TEAM = `"${teamId}"`;
       }
