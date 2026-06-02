@@ -97,6 +97,12 @@ function createExtensionFiles(modConfig) {
   const projectRoot = modConfig.modRequest.projectRoot;
   const iosRoot = path.join(projectRoot, "ios");
 
+  const provProfilesDir = path.join(
+    process.env.HOME || "/Users/expo",
+    "Library/MobileDevice/Provisioning Profiles"
+  );
+  fs.mkdirSync(provProfilesDir, { recursive: true });
+
   for (const ext of EXTENSIONS) {
     const extDir = path.join(iosRoot, ext.name);
     fs.mkdirSync(extDir, { recursive: true });
@@ -111,6 +117,18 @@ function createExtensionFiles(modConfig) {
       ENTITLEMENTS_PLIST,
       "utf8"
     );
+
+    // Install the profile into the system provisioning profiles directory so
+    // Xcode can find it by UUID during the build (manual signing).
+    const profileSrc = path.join(projectRoot, ext.provisioningProfilePath);
+    const profileInfo = extractProfileInfo(profileSrc);
+    if (profileInfo && profileInfo.uuid) {
+      const profileDest = path.join(provProfilesDir, `${profileInfo.uuid}.mobileprovision`);
+      fs.copyFileSync(profileSrc, profileDest);
+      console.log(`[withShieldExtensions] Installed profile "${profileInfo.name}" (${profileInfo.uuid})`);
+    } else {
+      console.warn(`[withShieldExtensions] Could not read profile for ${ext.name} at ${profileSrc}`);
+    }
   }
 
   return modConfig;
@@ -205,9 +223,18 @@ function addExtensionTargets(modConfig) {
       bs.MARKETING_VERSION = `"${appVersion}"`;
       bs.CURRENT_PROJECT_VERSION = `"${buildNumber}"`;
       bs.GENERATE_INFOPLIST_FILE = "NO";
-        bs.CODE_SIGN_STYLE = "Automatic";
-      if (teamId) {
+        if (teamId) {
         bs.DEVELOPMENT_TEAM = `"${teamId}"`;
+      }
+      const profileAbsPath = path.join(modConfig.modRequest.projectRoot, ext.provisioningProfilePath);
+      const profileInfo = extractProfileInfo(profileAbsPath);
+      if (profileInfo && profileInfo.uuid) {
+        bs.CODE_SIGN_STYLE = "Manual";
+        bs.CODE_SIGN_IDENTITY = '"iPhone Distribution"';
+        bs.PROVISIONING_PROFILE = `"${profileInfo.uuid}"`;
+        bs.PROVISIONING_PROFILE_SPECIFIER = `"${profileInfo.name}"`;
+      } else {
+        bs.CODE_SIGN_STYLE = "Automatic";
       }
     }
 
