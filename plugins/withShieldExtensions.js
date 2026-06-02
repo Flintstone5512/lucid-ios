@@ -11,7 +11,7 @@ const EXTENSIONS = [
     name: "LucidShieldConfiguration",
     bundleId: `${MAIN_BUNDLE_ID}.LucidShieldConfiguration`,
     swiftFile: "LucidShieldConfigurationExtension.swift",
-    provisioningProfilePath: "certs/LucidShieldConfiguration.mobileprovision",
+    provisioningProfilePath: "certs/Lucid_Shield_Configuration_AppStore.mobileprovision",
     infoPlist: buildInfoPlist(
       "com.apple.shieldconfiguration",
       "LucidShieldConfigurationExtension"
@@ -22,7 +22,7 @@ const EXTENSIONS = [
     name: "LucidShieldAction",
     bundleId: `${MAIN_BUNDLE_ID}.LucidShieldAction`,
     swiftFile: "LucidShieldActionExtension.swift",
-    provisioningProfilePath: "certs/LucidShieldAction.mobileprovision",
+    provisioningProfilePath: "certs/Lucid_Shield_Action_AppStore.mobileprovision",
     infoPlist: buildInfoPlist(
       "com.apple.shieldaction.remote",
       "LucidShieldActionExtension"
