@@ -187,10 +187,6 @@ function addExtensionTargets(modConfig) {
       );
     }
 
-    const projectRoot = modConfig.modRequest.projectRoot;
-    const profileAbsPath = path.join(projectRoot, ext.provisioningProfilePath);
-    const profileInfo = extractProfileInfo(profileAbsPath);
-
     const appVersion = modConfig.version || "1.0.0";
     const buildNumber = (modConfig.ios && modConfig.ios.buildNumber) || "1";
 
@@ -209,16 +205,9 @@ function addExtensionTargets(modConfig) {
       bs.MARKETING_VERSION = `"${appVersion}"`;
       bs.CURRENT_PROJECT_VERSION = `"${buildNumber}"`;
       bs.GENERATE_INFOPLIST_FILE = "NO";
+        bs.CODE_SIGN_STYLE = "Automatic";
       if (teamId) {
         bs.DEVELOPMENT_TEAM = `"${teamId}"`;
-      }
-      if (profileInfo && profileInfo.uuid) {
-        bs.CODE_SIGN_STYLE = "Manual";
-        bs.CODE_SIGN_IDENTITY = '"iPhone Distribution"';
-        bs.PROVISIONING_PROFILE = `"${profileInfo.uuid}"`;
-        bs.PROVISIONING_PROFILE_SPECIFIER = `"${profileInfo.name}"`;
-      } else {
-        bs.CODE_SIGN_STYLE = "Automatic";
       }
     }
 
