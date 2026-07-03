@@ -28,16 +28,17 @@
           "androidAppId": "ca-app-pub-4629047096490080~8792762842",
           "iosAppId": "ca-app-pub-4629047096490080~9722701138"
         }
-      ]
+      ],
+      "./plugins/withShieldExtensions"
     ],
 
     "ios": {
-      "bundleIdentifier": "com.yourcompany.scrolltax",
+      "bundleIdentifier": "com.yourapp.scrolltax",
       "deploymentTarget": "16.0"
     },
 
     "android": {
-      "package": "com.yourcompany.scrolltax",
+      "package": "com.yourapp.scrolltax",
 
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",

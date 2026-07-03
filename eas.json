@@ -35,6 +35,12 @@
     }
   },
   "submit": {
+    "testflight": {
+      "ios": {
+        "appleId": "flintrus@gmail.com",
+        "ascAppId": "6785974487"
+      }
+    },
     "production": {
       "ios": {
         "appleId": "getsolomoney@gmail.com"
