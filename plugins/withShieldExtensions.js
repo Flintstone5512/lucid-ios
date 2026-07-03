@@ -208,8 +208,14 @@ function addExtensionTargets(modConfig) {
     const appVersion = modConfig.version || "1.0.0";
     const buildNumber = (modConfig.ios && modConfig.ios.buildNumber) || "1";
 
+    const profileAbsPath = path.join(modConfig.modRequest.projectRoot, ext.provisioningProfilePath);
+    const profileInfo = extractProfileInfo(profileAbsPath);
+
     for (const { value: cfgUUID } of configList.buildConfigurations) {
-      const bs = xcBuildConfigs[cfgUUID].buildSettings;
+      const cfg = xcBuildConfigs[cfgUUID];
+      const bs = cfg.buildSettings;
+      const isRelease = cfg.name === "Release";
+
       bs.SWIFT_VERSION = "5.0";
       bs.IPHONEOS_DEPLOYMENT_TARGET = DEPLOYMENT_TARGET;
       bs.PRODUCT_BUNDLE_IDENTIFIER = `"${ext.bundleId}"`;
@@ -223,18 +229,19 @@ function addExtensionTargets(modConfig) {
       bs.MARKETING_VERSION = `"${appVersion}"`;
       bs.CURRENT_PROJECT_VERSION = `"${buildNumber}"`;
       bs.GENERATE_INFOPLIST_FILE = "NO";
-        if (teamId) {
+      if (teamId) {
         bs.DEVELOPMENT_TEAM = `"${teamId}"`;
       }
-      const profileAbsPath = path.join(modConfig.modRequest.projectRoot, ext.provisioningProfilePath);
-      const profileInfo = extractProfileInfo(profileAbsPath);
-      if (profileInfo && profileInfo.uuid) {
+      // Release: manual signing with the App Store profile.
+      // Debug: automatic signing so ad-hoc/dev builds aren't blocked by an App Store profile.
+      if (isRelease && profileInfo && profileInfo.uuid) {
         bs.CODE_SIGN_STYLE = "Manual";
         bs.CODE_SIGN_IDENTITY = '"iPhone Distribution"';
         bs.PROVISIONING_PROFILE = `"${profileInfo.uuid}"`;
         bs.PROVISIONING_PROFILE_SPECIFIER = `"${profileInfo.name}"`;
       } else {
         bs.CODE_SIGN_STYLE = "Automatic";
+        bs.CODE_SIGN_IDENTITY = '"Apple Development"';
       }
     }
 
