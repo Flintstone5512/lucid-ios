@@ -115,10 +115,14 @@ public class ScreenTimeModule: Module {
         let store = ManagedSettingsStore()
         let appsShielded = (store.shield.applications).map { !$0.isEmpty } ?? false
         let catsShielded: Bool
-        switch store.shield.applicationCategories {
-        case .none:                        catsShielded = false
-        case .some(.all):                  catsShielded = true
-        case .some(.specific(let t, _)):   catsShielded = !t.isEmpty
+        if let policy = store.shield.applicationCategories {
+          if case .specific(let cats, _) = policy {
+            catsShielded = !cats.isEmpty
+          } else {
+            catsShielded = true // .all — every category is blocked
+          }
+        } else {
+          catsShielded = false
         }
         return ["ok": true, "isShielded": appsShielded || catsShielded]
       }
