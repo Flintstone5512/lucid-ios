@@ -14,8 +14,8 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     }
 
     override func intervalDidEnd(for activity: DeviceActivityName) {
-        store.shield.applications = nil
-        store.shield.webDomains = nil
+        // Intentionally empty — blocking is controlled by the main app (clearShield on study complete).
+        // Never auto-clear here; that would lift the block every day at 23:59.
     }
 
     override func eventDidReachThreshold(
@@ -32,7 +32,12 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
             FamilyActivitySelection.self, from: data
         ) else { return }
         let tokens = selection.applicationTokens
-        guard !tokens.isEmpty else { return }
-        store.shield.applications = tokens
+        if !tokens.isEmpty {
+            store.shield.applications = tokens
+        }
+        let categoryTokens = selection.categoryTokens
+        if !categoryTokens.isEmpty {
+            store.shield.applicationCategories = .specific(categoryTokens)
+        }
     }
 }

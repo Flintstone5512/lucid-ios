@@ -62,8 +62,8 @@ export default function IOSScreenTimeSetupScreen() {
       setAuthorized(true);
       // Immediately open the app picker so the user doesn't have to find step 2
       try {
-        await presentAppPicker();
-        setAppsSelected(true);
+        const pickerResult = await presentAppPicker();
+        if (pickerResult.ok) setAppsSelected(true);
       } catch {
         // Picker failed — user can still tap Choose Apps manually
       }
@@ -163,7 +163,7 @@ export default function IOSScreenTimeSetupScreen() {
             <Pressable
               style={[styles.btn, appsSelected && styles.btnDone, (!authorized || loading) && styles.btnDisabled]}
               onPress={chooseApps}
-              disabled={!authorized || loading || appsSelected}
+              disabled={!authorized || loading}
             >
               <Text style={[styles.btnText, appsSelected && styles.btnTextDone]}>
                 {appsSelected ? "Apps Selected" : "Choose Apps"}

@@ -57,3 +57,13 @@ export async function checkAndClearPendingSession(): Promise<{ ok: boolean; pend
   if (!ScreenTimeModule) return { ok: false, pending: false };
   return ScreenTimeModule.checkAndClearPendingSession();
 }
+
+export async function startMonitoringBlockedApps(): Promise<{ ok: boolean; error?: string }> {
+  if (!ScreenTimeModule) return { ok: false, error: "ScreenTimeModule not available" };
+  return ScreenTimeModule.startMonitoringBlockedApps();
+}
+
+export async function stopMonitoring(): Promise<{ ok: boolean }> {
+  if (!ScreenTimeModule) return { ok: false };
+  return ScreenTimeModule.stopMonitoring();
+}

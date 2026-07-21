@@ -255,8 +255,12 @@ async function handleDeepLink(url: string) {
         console.log("🔁 App resumed — rechecking permissions");
         await refreshPermissions();
 
-        // Check if a ShieldAction triggered a study session
         if (Platform.OS === "ios") {
+          // Reapply shield on every foreground in case ManagedSettingsStore was
+          // cleared by a device restart or system event while the app was backgrounded.
+          applyShield().catch(() => {});
+
+          // Check if a ShieldAction triggered a study session
           try {
             const result = await checkAndClearPendingSession();
             if (result?.pending) {

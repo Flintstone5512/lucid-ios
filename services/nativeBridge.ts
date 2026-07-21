@@ -66,7 +66,7 @@ export async function scheduleUnlockWindow(expiresAt: number) {
 
 export async function startMonitoringBlockedApps() {
   if (Platform.OS !== "ios") return { ok: true };
-  return DeviceActivityMonitorModule?.startMonitoringBlockedApps?.() ?? { ok: false, error: "DeviceActivityMonitorModule not available" };
+  return ScreenTime.startMonitoringBlockedApps();
 }
 
 /* =========================
