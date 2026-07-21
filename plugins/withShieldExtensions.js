@@ -54,12 +54,26 @@ const ENTITLEMENTS_FULL = `<?xml version="1.0" encoding="UTF-8"?>
 </dict>
 </plist>`;
 
+// ShieldAction writes pendingStudySession to shared UserDefaults → App Groups only.
+// ShieldConfiguration reads cardsRequired/unlockMinutes from shared UserDefaults → App Groups only.
+// Neither calls FamilyControls APIs, so no restricted entitlement is needed or allowed.
+const ENTITLEMENTS_APP_GROUP = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>${APP_GROUP}</string>
+    </array>
+</dict>
+</plist>`;
+
 // ─── Extension definitions ────────────────────────────────────────────────────
-// NOTE: com.apple.deviceactivity.shield.action and
-//       com.apple.deviceactivity.shield.configuration are rejected by Apple's
-//       App Store validation for third-party apps. Only DeviceActivityMonitor
-//       (com.apple.deviceactivity.monitor-extension) is permitted.
-//       Shield action/configuration are NOT included here.
+//
+// manualSigning: true  → Release uses the provisioning profile in provisioningProfilePath.
+//                        Required for targets with restricted entitlements (FamilyControls).
+// manualSigning: false → CODE_SIGN_STYLE = Automatic. EAS creates the profile for
+//                        the bundle ID automatically (works for App-Groups-only extensions).
 
 const EXTENSIONS = [
   {
@@ -74,6 +88,39 @@ const EXTENSIONS = [
     ),
     frameworks: ["DeviceActivity", "ManagedSettings", "FamilyControls"],
     entitlements: ENTITLEMENTS_FULL,
+    manualSigning: true,
+  },
+  {
+    // Shows the custom "Time to Study / Start Study Session" shield UI.
+    // Extension point: com.apple.deviceactivity.shield.configuration (correct identifier).
+    name: "LucidShieldUI",
+    bundleId: `${MAIN_BUNDLE_ID}.LucidShieldUI`,
+    swiftFile: "LucidShieldConfigurationExtension.swift",
+    srcDir: "LucidShieldConfiguration",
+    provisioningProfilePath: "certs/Lucid_Shield_UI_AppStore.mobileprovision",
+    infoPlist: buildInfoPlist(
+      "com.apple.deviceactivity.shield.configuration",
+      "LucidShieldConfigurationExtension"
+    ),
+    frameworks: ["ManagedSettings", "ManagedSettingsUI"],
+    entitlements: ENTITLEMENTS_APP_GROUP,
+    manualSigning: true,
+  },
+  {
+    // Handles the "Start Study Session" button tap on the shield.
+    // Writes pendingStudySession=true → returns .defer → iOS opens the main app.
+    // Extension point: com.apple.deviceactivity.shield.action (correct identifier).
+    name: "LucidShieldAction",
+    bundleId: `${MAIN_BUNDLE_ID}.LucidShieldAction`,
+    swiftFile: "ShieldActionExtension.swift",
+    srcDir: "LucidShieldAction",
+    provisioningProfilePath: "certs/Lucid_Shield_Action_AppStore.mobileprovision",
+    infoPlist: buildInfoPlist(
+      "com.apple.deviceactivity.shield.action",
+      "ShieldActionExtension"
+    ),
+    frameworks: ["ManagedSettings"],
+    entitlements: ENTITLEMENTS_APP_GROUP,
     manualSigning: true,
   },
 ];
