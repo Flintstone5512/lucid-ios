@@ -6,7 +6,7 @@ import { showRewardedAd } from "../services/adService";
 import api from "../services/api";
 import { syncEnforcementDecision } from "../services/enforcementSync";
 import {
-  grantAndroidUnlock,
+  grantNativeUnlock,
   hideBlockingOverlay,
   reopenBlockedApp,
 } from "../services/nativeBridge";
@@ -76,7 +76,7 @@ export default function SessionScreen() {
           Date.now() + NO_CARDS_GRACE_MINUTES * 60 * 1000
         ).toISOString();
 
-        await grantAndroidUnlock(expiresAt);
+        await grantNativeUnlock(expiresAt);
         await hideBlockingOverlay();
         await syncEnforcementDecision();
 
@@ -124,7 +124,7 @@ export default function SessionScreen() {
 
       if (expiresAt) {
         const expiresMs = new Date(expiresAt).getTime();
-        await grantAndroidUnlock(expiresAt);
+        await grantNativeUnlock(expiresAt);
         setStatePatch({ unlockedUntil: expiresMs });
         console.log("[SESSION] unlockedUntil set to", expiresAt);
       }
@@ -162,7 +162,7 @@ export default function SessionScreen() {
         Date.now() + 20 * 60 * 1000
       ).toISOString();
 
-      await grantAndroidUnlock(expiresAt);
+      await grantNativeUnlock(expiresAt);
     }
 
     // 🔥 STEP 1: update enforcement FIRST
@@ -263,7 +263,7 @@ export default function SessionScreen() {
         unlockedUntil: Date.now() + minutes * 60000,
       });
 
-      await grantAndroidUnlock(expiresAt);
+      await grantNativeUnlock(expiresAt);
       await hideBlockingOverlay();
       await syncEnforcementDecision();
 
@@ -283,7 +283,7 @@ export default function SessionScreen() {
         Date.now() + 60 * 1000
       ).toISOString();
 
-      await grantAndroidUnlock(expiresAt);
+      await grantNativeUnlock(expiresAt);
       await hideBlockingOverlay();
 
       setUnlockData({ unlockMinutes: 1 });
@@ -312,7 +312,7 @@ export default function SessionScreen() {
       ).toISOString();
 
       try {
-        await grantAndroidUnlock(expiresAt);
+        await grantNativeUnlock(expiresAt);
         await hideBlockingOverlay();
       } catch (e) {
         console.log("⚠️ unlock fallback failed:", e);

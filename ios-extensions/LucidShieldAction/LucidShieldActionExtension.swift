@@ -1,5 +1,4 @@
 import ManagedSettings
-import UserNotifications
 
 @available(iOS 16, *)
 final class LucidShieldActionExtension: ShieldActionDelegate {
@@ -26,26 +25,8 @@ final class LucidShieldActionExtension: ShieldActionDelegate {
 
     private func triggerStudySession(completionHandler: @escaping (ShieldActionResponse) -> Void) {
         let defaults = UserDefaults(suiteName: appGroupSuite)
-        defaults?.set(true, forKey: "pendingSession")
+        defaults?.set(true, forKey: "pendingStudySession")
         defaults?.synchronize()
-
-        let content = UNMutableNotificationContent()
-        content.title = "Time to Study"
-        content.body = "Tap here to start your flashcard session and earn your unlock."
-        content.sound = .default
-
-        if #available(iOS 15.0, *) {
-            content.interruptionLevel = .active
-        }
-
-        let request = UNNotificationRequest(
-            identifier: "lucid-study-\(Int(Date().timeIntervalSince1970))",
-            content: content,
-            trigger: nil
-        )
-
-        UNUserNotificationCenter.current().add(request) { _ in
-            completionHandler(.close)
-        }
+        completionHandler(.defer)  // brings main app to foreground
     }
 }

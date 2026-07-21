@@ -130,6 +130,13 @@ public class ScreenTimeModule: Module {
     }
 
     AsyncFunction("applyShield") { () -> [String: Any] in
+      // Skip re-shielding during an active unlock window so the user keeps access
+      // to blocked apps after completing their flashcard session.
+      let expiresAt = self.sharedDefaults?.double(forKey: unlockKey) ?? 0
+      if Date().timeIntervalSince1970 * 1000 < expiresAt {
+        return ["ok": true, "skipped": true]
+      }
+
       if #available(iOS 16, *) {
         let store = ManagedSettingsStore()
         let data = self.sharedDefaults?.data(forKey: selectionKey)

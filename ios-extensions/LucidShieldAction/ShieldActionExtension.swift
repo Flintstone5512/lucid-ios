@@ -23,9 +23,9 @@ class ShieldActionExtension: ShieldActionDelegate {
             let defaults = UserDefaults(suiteName: appGroupSuite) ?? UserDefaults.standard
             defaults.set(true, forKey: "pendingStudySession")
             defaults.synchronize()
-            completionHandler(.close)
+            completionHandler(.defer)  // brings main app to foreground
         case .secondaryButtonPressed:
-            completionHandler(.defer)
+            completionHandler(.close)
         @unknown default:
             completionHandler(.close)
         }

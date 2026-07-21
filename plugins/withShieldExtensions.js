@@ -6,39 +6,7 @@ const MAIN_BUNDLE_ID = "com.yourapp.scrolltax";
 const APP_GROUP = "group.com.yourapp.scrolltax";
 const DEPLOYMENT_TARGET = "16.4";
 
-// LucidShieldAction (com.apple.screentime.shield.actions) and
-// LucidShieldUI (com.apple.screentime.shield.configuration) are omitted:
-// Apple's App Store validation rejects those extension point identifiers for
-// third-party apps regardless of Family Controls entitlement approval.
-// Blocking still works via DeviceActivityMonitor; users see Apple's default shield screen.
-const EXTENSIONS = [
-  {
-    name: "LucidShieldConfiguration",
-    bundleId: `${MAIN_BUNDLE_ID}.LucidShieldConfiguration`,
-    swiftFile: "DeviceActivityMonitorExtension.swift",
-    provisioningProfilePath: "certs/Lucid_Shield_Configuration_AppStore.mobileprovision",
-    infoPlist: buildInfoPlist(
-      "com.apple.deviceactivity.monitor-extension",
-      "DeviceActivityMonitorExtension"
-    ),
-    frameworks: ["DeviceActivity", "ManagedSettings", "FamilyControls"],
-  },
-];
-
-function extractProfileInfo(profilePath) {
-  if (!fs.existsSync(profilePath)) return null;
-  const content = fs.readFileSync(profilePath, "binary");
-  const start = content.indexOf("<?xml");
-  const end = content.indexOf("</plist>") + "</plist>".length;
-  if (start === -1 || end === -1) return null;
-  const xml = content.slice(start, end);
-  const uuidMatch = xml.match(/<key>UUID<\/key>\s*<string>([^<]+)<\/string>/);
-  const nameMatch = xml.match(/<key>Name<\/key>\s*<string>([^<]+)<\/string>/);
-  return {
-    uuid: uuidMatch ? uuidMatch[1].trim() : null,
-    name: nameMatch ? nameMatch[1].trim() : null,
-  };
-}
+// ─── Plist / entitlement templates ───────────────────────────────────────────
 
 function buildInfoPlist(extensionPointId, principalClass) {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -72,9 +40,7 @@ function buildInfoPlist(extensionPointId, principalClass) {
 </plist>`;
 }
 
-// DeviceActivityMonitor extensions call the FamilyControls API directly and need the
-// restricted entitlement. Shield UI / Action extensions only respond to shield events
-// and must NOT include it — their provisioning profiles won't have Apple's approval for it.
+// DeviceActivityMonitor calls FamilyControls APIs directly → needs the restricted entitlement.
 const ENTITLEMENTS_FULL = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -88,8 +54,10 @@ const ENTITLEMENTS_FULL = `<?xml version="1.0" encoding="UTF-8"?>
 </dict>
 </plist>`;
 
-// LucidShieldAction writes to shared UserDefaults → needs App Groups.
-const ENTITLEMENTS_MINIMAL = `<?xml version="1.0" encoding="UTF-8"?>
+// ShieldAction writes pendingStudySession to shared UserDefaults → App Groups only.
+// ShieldConfiguration reads cardsRequired/unlockMinutes from shared UserDefaults → App Groups only.
+// Neither calls FamilyControls APIs, so no restricted entitlement is needed or allowed.
+const ENTITLEMENTS_APP_GROUP = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -100,14 +68,81 @@ const ENTITLEMENTS_MINIMAL = `<?xml version="1.0" encoding="UTF-8"?>
 </dict>
 </plist>`;
 
-// LucidShieldUI only returns static visual config — no shared data access, no special entitlements needed.
-const ENTITLEMENTS_NONE = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict/>
-</plist>`;
+// ─── Extension definitions ────────────────────────────────────────────────────
+//
+// manualSigning: true  → Release uses the provisioning profile in provisioningProfilePath.
+//                        Required for targets with restricted entitlements (FamilyControls).
+// manualSigning: false → CODE_SIGN_STYLE = Automatic. EAS creates the profile for
+//                        the bundle ID automatically (works for App-Groups-only extensions).
 
-// ─── Phase 1: write files into ios/ ──────────────────────────────────────────
+const EXTENSIONS = [
+  {
+    name: "LucidShieldConfiguration",
+    bundleId: `${MAIN_BUNDLE_ID}.LucidShieldConfiguration`,
+    swiftFile: "DeviceActivityMonitorExtension.swift",
+    srcDir: "LucidShieldConfiguration",
+    provisioningProfilePath: "certs/Lucid_Shield_Configuration_AppStore.mobileprovision",
+    infoPlist: buildInfoPlist(
+      "com.apple.deviceactivity.monitor-extension",
+      "DeviceActivityMonitorExtension"
+    ),
+    frameworks: ["DeviceActivity", "ManagedSettings", "FamilyControls"],
+    entitlements: ENTITLEMENTS_FULL,
+    manualSigning: true,
+  },
+  {
+    // Shows the custom "Time to Study / Start Study Session" shield UI.
+    // Extension point: com.apple.deviceactivity.shield.configuration (correct identifier).
+    name: "LucidShieldUI",
+    bundleId: `${MAIN_BUNDLE_ID}.LucidShieldUI`,
+    swiftFile: "LucidShieldConfigurationExtension.swift",
+    srcDir: "LucidShieldConfiguration",
+    provisioningProfilePath: null,
+    infoPlist: buildInfoPlist(
+      "com.apple.deviceactivity.shield.configuration",
+      "LucidShieldConfigurationExtension"
+    ),
+    frameworks: ["ManagedSettings", "ManagedSettingsUI"],
+    entitlements: ENTITLEMENTS_APP_GROUP,
+    manualSigning: false,
+  },
+  {
+    // Handles the "Start Study Session" button tap on the shield.
+    // Writes pendingStudySession=true → returns .defer → iOS opens the main app.
+    // Extension point: com.apple.deviceactivity.shield.action (correct identifier).
+    name: "LucidShieldAction",
+    bundleId: `${MAIN_BUNDLE_ID}.LucidShieldAction`,
+    swiftFile: "ShieldActionExtension.swift",
+    srcDir: "LucidShieldAction",
+    provisioningProfilePath: null,
+    infoPlist: buildInfoPlist(
+      "com.apple.deviceactivity.shield.action",
+      "ShieldActionExtension"
+    ),
+    frameworks: ["ManagedSettings"],
+    entitlements: ENTITLEMENTS_APP_GROUP,
+    manualSigning: false,
+  },
+];
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function extractProfileInfo(profilePath) {
+  if (!fs.existsSync(profilePath)) return null;
+  const content = fs.readFileSync(profilePath, "binary");
+  const start = content.indexOf("<?xml");
+  const end = content.indexOf("</plist>") + "</plist>".length;
+  if (start === -1 || end === -1) return null;
+  const xml = content.slice(start, end);
+  const uuidMatch = xml.match(/<key>UUID<\/key>\s*<string>([^<]+)<\/string>/);
+  const nameMatch = xml.match(/<key>Name<\/key>\s*<string>([^<]+)<\/string>/);
+  return {
+    uuid: uuidMatch ? uuidMatch[1].trim() : null,
+    name: nameMatch ? nameMatch[1].trim() : null,
+  };
+}
+
+// ─── Phase 1: write extension source files into ios/ ─────────────────────────
 
 function createExtensionFiles(modConfig) {
   const projectRoot = modConfig.modRequest.projectRoot;
@@ -123,45 +158,48 @@ function createExtensionFiles(modConfig) {
     const extDir = path.join(iosRoot, ext.name);
     fs.mkdirSync(extDir, { recursive: true });
 
-    fs.copyFileSync(
-      path.join(projectRoot, "ios-extensions", ext.name, ext.swiftFile),
-      path.join(extDir, ext.swiftFile)
-    );
+    // Copy the Swift source file from ios-extensions/<srcDir>/
+    const srcFile = path.join(projectRoot, "ios-extensions", ext.srcDir, ext.swiftFile);
+    fs.copyFileSync(srcFile, path.join(extDir, ext.swiftFile));
+
     fs.writeFileSync(path.join(extDir, "Info.plist"), ext.infoPlist, "utf8");
-    const entitlements = ext.noEntitlements
-      ? ENTITLEMENTS_NONE
-      : ext.minimalEntitlements
-      ? ENTITLEMENTS_MINIMAL
-      : ENTITLEMENTS_FULL;
     fs.writeFileSync(
       path.join(extDir, `${ext.name}.entitlements`),
-      entitlements,
+      ext.entitlements,
       "utf8"
     );
 
-    // Install the profile into the system provisioning profiles directory so
-    // Xcode can find it by UUID during the build (manual signing).
-    const profileSrc = path.join(projectRoot, ext.provisioningProfilePath);
-    const profileInfo = extractProfileInfo(profileSrc);
-    if (profileInfo && profileInfo.uuid) {
-      const profileDest = path.join(provProfilesDir, `${profileInfo.uuid}.mobileprovision`);
-      fs.copyFileSync(profileSrc, profileDest);
-      console.log(`[withShieldExtensions] Installed profile "${profileInfo.name}" (${profileInfo.uuid})`);
-    } else {
-      console.warn(`[withShieldExtensions] Could not read profile for ${ext.name} at ${profileSrc}`);
+    // Install manual provisioning profiles so Xcode can find them by UUID during the build.
+    if (ext.provisioningProfilePath) {
+      const profileSrc = path.join(projectRoot, ext.provisioningProfilePath);
+      const profileInfo = extractProfileInfo(profileSrc);
+      if (profileInfo && profileInfo.uuid) {
+        const profileDest = path.join(
+          provProfilesDir,
+          `${profileInfo.uuid}.mobileprovision`
+        );
+        fs.copyFileSync(profileSrc, profileDest);
+        console.log(
+          `[withShieldExtensions] Installed profile "${profileInfo.name}" (${profileInfo.uuid})`
+        );
+      } else {
+        console.warn(
+          `[withShieldExtensions] Could not read profile for ${ext.name} at ${profileSrc}`
+        );
+      }
     }
   }
 
   return modConfig;
 }
 
-// ─── Phase 2: mutate xcodeproj ────────────────────────────────────────────────
+// ─── Phase 2: add extension targets to the Xcode project ─────────────────────
 
 function addExtensionTargets(modConfig) {
   const proj = modConfig.modResults;
   const objects = proj.hash.project.objects;
 
-  // Find main app target UUID
+  // Locate the main app target
   const nativeTargets = proj.pbxNativeTargetSection();
   let mainTargetUUID = null;
   for (const [uuid, target] of Object.entries(nativeTargets)) {
@@ -177,20 +215,36 @@ function addExtensionTargets(modConfig) {
     return modConfig;
   }
 
+  const teamId = process.env.EXPO_APPLE_TEAM_ID || "";
+  if (!teamId) {
+    console.warn(
+      "[withShieldExtensions] EXPO_APPLE_TEAM_ID env var is not set — " +
+        "extension targets will fail code signing. Add it in your EAS project " +
+        "environment variables (expo.dev → your project → Environment Variables)."
+    );
+  }
+
+  const appVersion = modConfig.version || "1.0.0";
+  const buildNumber = (modConfig.ios && modConfig.ios.buildNumber) || "1";
+
   for (const ext of EXTENSIONS) {
-    // Idempotency — skip if already added
+    // Idempotent — skip if the target was already added in a previous prebuild run
     const alreadyExists = Object.values(nativeTargets).some(
       (t) => t && !t._comment && t.name === `"${ext.name}"`
     );
-    if (alreadyExists) continue;
+    if (alreadyExists) {
+      console.log(`[withShieldExtensions] ${ext.name} already exists — skipping`);
+      continue;
+    }
 
-    // addTarget:
-    //  • creates PBXNativeTarget + product file reference
-    //  • automatically adds product to the main target's "Copy Files" build phase
-    const target = proj.addTarget(ext.name, "app_extension", ext.name, ext.bundleId);
+    const target = proj.addTarget(
+      ext.name,
+      "app_extension",
+      ext.name,
+      ext.bundleId
+    );
     const targetUUID = target.uuid;
 
-    // Build phases on the extension target
     proj.addBuildPhase(
       [`${ext.name}/${ext.swiftFile}`],
       "PBXSourcesBuildPhase",
@@ -200,7 +254,6 @@ function addExtensionTargets(modConfig) {
     proj.addBuildPhase([], "PBXFrameworksBuildPhase", "Frameworks", targetUUID);
     proj.addBuildPhase([], "PBXResourcesBuildPhase", "Resources", targetUUID);
 
-    // System frameworks for this extension
     for (const fw of ext.frameworks) {
       proj.addFramework(`${fw}.framework`, {
         target: targetUUID,
@@ -210,27 +263,17 @@ function addExtensionTargets(modConfig) {
       });
     }
 
-    // Build settings on both Debug + Release configurations
+    // Apply build settings to every configuration (Debug + Release)
     const configListUUID = target.pbxNativeTarget.buildConfigurationList;
     const configList = proj.pbxXCConfigurationList()[configListUUID];
     const xcBuildConfigs = proj.pbxXCBuildConfigurationSection();
 
-    // EXPO_APPLE_TEAM_ID must be set in EAS environment variables.
-    // Without it, Xcode automatic signing fails with "requires a development team".
-    const teamId = process.env.EXPO_APPLE_TEAM_ID || "";
-    if (!teamId) {
-      console.warn(
-        "[withShieldExtensions] EXPO_APPLE_TEAM_ID env var is not set — " +
-          "extension targets will fail code signing. Add it in your EAS project " +
-          "environment variables (expo.dev → your project → Environment Variables)."
-      );
-    }
-
-    const appVersion = modConfig.version || "1.0.0";
-    const buildNumber = (modConfig.ios && modConfig.ios.buildNumber) || "1";
-
-    const profileAbsPath = path.join(modConfig.modRequest.projectRoot, ext.provisioningProfilePath);
-    const profileInfo = extractProfileInfo(profileAbsPath);
+    const profileInfo =
+      ext.manualSigning && ext.provisioningProfilePath
+        ? extractProfileInfo(
+            path.join(modConfig.modRequest.projectRoot, ext.provisioningProfilePath)
+          )
+        : null;
 
     for (const { value: cfgUUID } of configList.buildConfigurations) {
       const cfg = xcBuildConfigs[cfgUUID];
@@ -250,57 +293,58 @@ function addExtensionTargets(modConfig) {
       bs.MARKETING_VERSION = `"${appVersion}"`;
       bs.CURRENT_PROJECT_VERSION = `"${buildNumber}"`;
       bs.GENERATE_INFOPLIST_FILE = "NO";
+
       if (teamId) {
         bs.DEVELOPMENT_TEAM = `"${teamId}"`;
       }
-      // Release: manual signing with the App Store profile.
-      // Debug: skip signing entirely — EAS production builds only use Release,
-      // and automatic signing fails when no development profile exists for the bundle ID.
-      if (isRelease && profileInfo && profileInfo.uuid) {
+
+      if (ext.manualSigning && isRelease && profileInfo?.uuid) {
+        // Restricted-entitlement extension: pin to the specific App Store profile
         bs.CODE_SIGN_STYLE = "Manual";
         bs.CODE_SIGN_IDENTITY = '"iPhone Distribution"';
         bs.PROVISIONING_PROFILE = `"${profileInfo.uuid}"`;
         bs.PROVISIONING_PROFILE_SPECIFIER = `"${profileInfo.name}"`;
-      } else {
+      } else if (ext.manualSigning) {
+        // Restricted extension, Debug config — skip signing
         bs.CODE_SIGN_STYLE = "Manual";
         bs.CODE_SIGN_IDENTITY = '""';
         bs.CODE_SIGN_REQUIRED = "NO";
+      } else {
+        // App-Groups-only extension — EAS manages credentials automatically
+        bs.CODE_SIGN_STYLE = "Automatic";
+        bs.CODE_SIGN_IDENTITY = '"Apple Distribution"';
       }
     }
 
-    // PBXTargetDependency so extension builds before main app
     addTargetDependency(proj, objects, mainTargetUUID, targetUUID, ext.name);
+    console.log(`[withShieldExtensions] Added target: ${ext.name}`);
   }
 
-  // Fix the "Copy Files" phase(s) that addTarget auto-created on the main target.
-  // They embed the .appex files but need dstSubfolderSpec=13 (PlugIns folder)
-  // and the RemoveHeadersOnCopy attribute to be treated as proper app extensions.
+  // Fix the "Copy Files" phases addTarget() creates on the main target so the
+  // .appex bundles embed correctly in the PlugIns folder.
   fixCopyPhasesForExtensions(proj, objects, mainTargetUUID);
 
   return modConfig;
 }
 
-// ─── Fix the auto-created "Copy Files" phase ─────────────────────────────────
-// addTarget() in the xcode package adds .appex products to the main target's
-// "Copy Files" phase, but with wrong settings. We find those phases and fix them
-// instead of creating a duplicate "Embed App Extensions" phase.
+// ─── Fix Embed App Extensions build phase ────────────────────────────────────
+// proj.addTarget() auto-adds a Copy Files phase on the main target but with
+// wrong settings. We find those phases and fix them.
 
 function fixCopyPhasesForExtensions(proj, objects, mainTargetUUID) {
   objects["PBXCopyFilesBuildPhase"] = objects["PBXCopyFilesBuildPhase"] || {};
   objects["PBXBuildFile"] = objects["PBXBuildFile"] || {};
 
-  // Collect all .appex product file references in the project
+  // Collect all .appex product file references
   const appexFileRefs = new Set();
-  const fileRefs = proj.pbxFileReferenceSection ? proj.pbxFileReferenceSection() : {};
+  const fileRefs = proj.pbxFileReferenceSection
+    ? proj.pbxFileReferenceSection()
+    : {};
   for (const [uuid, ref] of Object.entries(fileRefs)) {
     if (uuid.endsWith("_comment")) continue;
     const fileType = ref.explicitFileType || ref.lastKnownFileType || "";
-    if (fileType.includes("app-extension")) {
-      appexFileRefs.add(uuid);
-    }
+    if (fileType.includes("app-extension")) appexFileRefs.add(uuid);
   }
-
-  // Also collect from native targets' productReference
   for (const [uuid, target] of Object.entries(proj.pbxNativeTargetSection())) {
     if (uuid.endsWith("_comment")) continue;
     if (
@@ -311,7 +355,6 @@ function fixCopyPhasesForExtensions(proj, objects, mainTargetUUID) {
     }
   }
 
-  // Walk the main target's build phases, find any Copy Files phases with .appex products
   const mainTarget = proj.pbxNativeTargetSection()[mainTargetUUID];
   for (const { value: phaseUUID } of mainTarget.buildPhases || []) {
     const phase = objects["PBXCopyFilesBuildPhase"]?.[phaseUUID];
@@ -321,25 +364,21 @@ function fixCopyPhasesForExtensions(proj, objects, mainTargetUUID) {
       const bf = objects["PBXBuildFile"]?.[bfUUID];
       return bf && appexFileRefs.has(bf.fileRef);
     });
-
     if (appexBuildFiles.length === 0) continue;
 
-    // Correct the phase so extensions embed properly
-    phase.dstSubfolderSpec = 13; // PlugIns/extensions folder inside .app bundle
+    phase.dstSubfolderSpec = 13; // PlugIns folder
     phase.name = '"Embed App Extensions"';
-    objects["PBXCopyFilesBuildPhase"][`${phaseUUID}_comment`] = "Embed App Extensions";
+    objects["PBXCopyFilesBuildPhase"][`${phaseUUID}_comment`] =
+      "Embed App Extensions";
 
-    // Ensure each .appex build file has the RemoveHeadersOnCopy attribute
     for (const { value: bfUUID } of appexBuildFiles) {
       const bf = objects["PBXBuildFile"][bfUUID];
-      if (bf) {
-        bf.settings = "{ ATTRIBUTES = (RemoveHeadersOnCopy, ); }";
-      }
+      if (bf) bf.settings = "{ ATTRIBUTES = (RemoveHeadersOnCopy, ); }";
     }
   }
 }
 
-// ─── Target dependency (using raw objects — no broken helper methods) ─────────
+// ─── PBXTargetDependency (extension builds before main app) ──────────────────
 
 function addTargetDependency(proj, objects, mainTargetUUID, extTargetUUID, extName) {
   objects["PBXContainerItemProxy"] = objects["PBXContainerItemProxy"] || {};
@@ -356,7 +395,8 @@ function addTargetDependency(proj, objects, mainTargetUUID, extTargetUUID, extNa
     remoteGlobalIDString: extTargetUUID,
     remoteInfo: `"${extName}"`,
   };
-  objects["PBXContainerItemProxy"][`${proxyUUID}_comment`] = "PBXContainerItemProxy";
+  objects["PBXContainerItemProxy"][`${proxyUUID}_comment`] =
+    "PBXContainerItemProxy";
 
   objects["PBXTargetDependency"][depUUID] = {
     isa: "PBXTargetDependency",
@@ -368,7 +408,10 @@ function addTargetDependency(proj, objects, mainTargetUUID, extTargetUUID, extNa
   const mainTarget = proj.pbxNativeTargetSection()[mainTargetUUID];
   if (mainTarget) {
     mainTarget.dependencies = mainTarget.dependencies || [];
-    mainTarget.dependencies.push({ value: depUUID, comment: "PBXTargetDependency" });
+    mainTarget.dependencies.push({
+      value: depUUID,
+      comment: "PBXTargetDependency",
+    });
   }
 }
 

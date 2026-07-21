@@ -227,6 +227,16 @@ export async function grantAndroidUnlock(expiresAt) {
   }
 }
 
+export async function grantNativeUnlock(expiresAtIso: string) {
+  const epochMs = new Date(expiresAtIso).getTime();
+  if (Platform.OS === "android") {
+    return grantAndroidUnlock(expiresAtIso);
+  } else if (Platform.OS === "ios") {
+    return scheduleUnlockWindow(epochMs);
+  }
+  return { ok: false };
+}
+
 export async function getAndroidUnlockStatus() {
   if (isDev) {
     return {
