@@ -97,14 +97,14 @@ const EXTENSIONS = [
     bundleId: `${MAIN_BUNDLE_ID}.LucidShieldUI`,
     swiftFile: "LucidShieldConfigurationExtension.swift",
     srcDir: "LucidShieldConfiguration",
-    provisioningProfilePath: null,
+    provisioningProfilePath: "certs/Lucid_Shield_UI_AppStore.mobileprovision",
     infoPlist: buildInfoPlist(
       "com.apple.deviceactivity.shield.configuration",
       "LucidShieldConfigurationExtension"
     ),
     frameworks: ["ManagedSettings", "ManagedSettingsUI"],
     entitlements: ENTITLEMENTS_APP_GROUP,
-    manualSigning: false,
+    manualSigning: true,
   },
   {
     // Handles the "Start Study Session" button tap on the shield.
@@ -114,14 +114,14 @@ const EXTENSIONS = [
     bundleId: `${MAIN_BUNDLE_ID}.LucidShieldAction`,
     swiftFile: "ShieldActionExtension.swift",
     srcDir: "LucidShieldAction",
-    provisioningProfilePath: null,
+    provisioningProfilePath: "certs/Lucid_Shield_Action_AppStore.mobileprovision",
     infoPlist: buildInfoPlist(
       "com.apple.deviceactivity.shield.action",
       "ShieldActionExtension"
     ),
     frameworks: ["ManagedSettings"],
     entitlements: ENTITLEMENTS_APP_GROUP,
-    manualSigning: false,
+    manualSigning: true,
   },
 ];
 
