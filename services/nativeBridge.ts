@@ -8,6 +8,7 @@ const {
   OverlayPermissionModule,
   AccessibilityBridgeModule,
   BlockingOverlayModule,
+  DeviceActivityMonitorModule,
 } = NativeModules;
 
 /* =========================
@@ -27,6 +28,16 @@ export async function getIOSAuthorizationStatus() {
 export async function presentAppPicker() {
   if (Platform.OS !== "ios") return { ok: false };
   return ScreenTime.presentAppPicker();
+}
+
+export async function hasIOSAppSelection() {
+  if (Platform.OS !== "ios") return { ok: false, hasSelection: false };
+  return ScreenTime.hasSelection();
+}
+
+export async function getIOSShieldStatus() {
+  if (Platform.OS !== "ios") return { ok: false, isShielded: false };
+  return ScreenTime.getShieldStatus();
 }
 
 export async function saveSelectedApps(_tokens = []) {
@@ -54,7 +65,8 @@ export async function scheduleUnlockWindow(expiresAt: number) {
 }
 
 export async function startMonitoringBlockedApps() {
-  return { ok: true };
+  if (Platform.OS !== "ios") return { ok: true };
+  return DeviceActivityMonitorModule?.startMonitoringBlockedApps?.() ?? { ok: false, error: "DeviceActivityMonitorModule not available" };
 }
 
 /* =========================

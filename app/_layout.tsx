@@ -33,6 +33,7 @@ import {
   requestAndroidAccessibilityAccess,
   requestAndroidOverlayAccess,
   requestAndroidUsageAccess,
+  startMonitoringBlockedApps,
 } from "../services/nativeBridge";
 import { checkAndClearPendingSession } from "../modules/screen-time";
 
@@ -231,6 +232,7 @@ async function handleDeepLink(url: string) {
       try {
         const authStatus = await getIOSAuthorizationStatus();
         if (authStatus?.status === "approved") {
+          startMonitoringBlockedApps().catch(() => {});
           applyShield().catch(() => {});
         } else {
           router.replace("/screens/IOSScreenTimeSetupScreen");

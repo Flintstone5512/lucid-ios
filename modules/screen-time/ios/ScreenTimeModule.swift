@@ -52,21 +52,26 @@ public class ScreenTimeModule: Module {
           return
         }
 
-        let pickerView = STPickerView(
-          onSave: { selection in
-            if let data = try? PropertyListEncoder().encode(selection) {
-              UserDefaults(suiteName: appGroupSuite)?.set(data, forKey: selectionKey)
-            }
-            promise.resolve(["ok": true])
-          },
-          onCancel: {
-            promise.resolve(["ok": false, "cancelled": true])
-          }
-        )
+        var initialSelection = FamilyActivitySelection()
+        if let data = UserDefaults(suiteName: appGroupSuite)?.data(forKey: selectionKey),
+           let saved = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: data) {
+          initialSelection = saved
+        }
 
-        let vc = UIHostingController(rootView: pickerView)
-        vc.modalPresentationStyle = .pageSheet
-        root.present(vc, animated: true)
+        let coordinator = FamilyPickerCoordinator(selection: initialSelection)
+        let vc = UIHostingController(rootView: FamilyPickerContainer(coordinator: coordinator))
+        vc.view.backgroundColor = .clear
+        vc.modalPresentationStyle = .overCurrentContext
+
+        coordinator.onComplete = { [weak vc] finalSelection in
+          if let data = try? PropertyListEncoder().encode(finalSelection) {
+            UserDefaults(suiteName: appGroupSuite)?.set(data, forKey: selectionKey)
+          }
+          promise.resolve(["ok": true])
+          vc?.dismiss(animated: true)
+        }
+
+        root.present(vc, animated: false)
       }
     }
 
@@ -119,24 +124,31 @@ public class ScreenTimeModule: Module {
 }
 
 @available(iOS 16, *)
-private struct STPickerView: View {
-  @State private var selection = FamilyActivitySelection()
-  let onSave: (FamilyActivitySelection) -> Void
-  let onCancel: () -> Void
+private class FamilyPickerCoordinator: ObservableObject {
+  @Published var isPresented = true
+  @Published var selection: FamilyActivitySelection
+  var onComplete: ((FamilyActivitySelection) -> Void)?
+
+  init(selection: FamilyActivitySelection) {
+    self.selection = selection
+  }
+}
+
+@available(iOS 16, *)
+private struct FamilyPickerContainer: View {
+  @ObservedObject var coordinator: FamilyPickerCoordinator
 
   var body: some View {
-    NavigationView {
-      FamilyActivityPicker(selection: $selection)
-        .navigationTitle("Choose Apps to Block")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-          ToolbarItem(placement: .cancellationAction) {
-            Button("Cancel") { onCancel() }
-          }
-          ToolbarItem(placement: .confirmationAction) {
-            Button("Save") { onSave(selection) }
-          }
+    Color.clear
+      .ignoresSafeArea()
+      .familyActivityPicker(
+        isPresented: $coordinator.isPresented,
+        selection: $coordinator.selection
+      )
+      .onChange(of: coordinator.isPresented) { newValue in
+        if !newValue {
+          coordinator.onComplete?(coordinator.selection)
         }
-    }
+      }
   }
 }

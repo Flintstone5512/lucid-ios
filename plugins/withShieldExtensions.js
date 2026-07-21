@@ -10,24 +10,40 @@ const EXTENSIONS = [
   {
     name: "LucidShieldConfiguration",
     bundleId: `${MAIN_BUNDLE_ID}.LucidShieldConfiguration`,
-    swiftFile: "LucidShieldConfigurationExtension.swift",
+    swiftFile: "DeviceActivityMonitorExtension.swift",
     provisioningProfilePath: "certs/Lucid_Shield_Configuration_AppStore.mobileprovision",
     infoPlist: buildInfoPlist(
-      "com.apple.shieldconfiguration",
-      "LucidShieldConfigurationExtension"
+      "com.apple.deviceactivity.monitor-extension",
+      "DeviceActivityMonitorExtension"
     ),
-    frameworks: ["ManagedSettings", "ManagedSettingsUI", "UIKit"],
+    frameworks: ["DeviceActivity", "ManagedSettings", "FamilyControls"],
   },
   {
+    // Shield action extensions respond to button taps — they do NOT call the
+    // Family Controls API, so their profiles don't need (and won't have) that entitlement.
     name: "LucidShieldAction",
     bundleId: `${MAIN_BUNDLE_ID}.LucidShieldAction`,
-    swiftFile: "LucidShieldActionExtension.swift",
+    swiftFile: "ShieldActionExtension.swift",
     provisioningProfilePath: "certs/Lucid_Shield_Action_AppStore.mobileprovision",
     infoPlist: buildInfoPlist(
-      "com.apple.shieldaction.remote",
-      "LucidShieldActionExtension"
+      "com.apple.screentime.shield.actions",
+      "ShieldActionExtension"
     ),
-    frameworks: ["ManagedSettings", "UserNotifications"],
+    frameworks: ["ManagedSettings"],
+    minimalEntitlements: true,
+  },
+  {
+    // Shield UI extensions only provide visual configuration — no shared data, no App Groups needed.
+    name: "LucidShieldUI",
+    bundleId: `${MAIN_BUNDLE_ID}.LucidShieldUI`,
+    swiftFile: "ShieldConfigurationExtension.swift",
+    provisioningProfilePath: "certs/Lucid_Shield_UI_AppStore.mobileprovision",
+    infoPlist: buildInfoPlist(
+      "com.apple.screentime.shield.configuration",
+      "ShieldConfigurationExtension"
+    ),
+    frameworks: ["ManagedSettingsUI", "ManagedSettings"],
+    noEntitlements: true,
   },
 ];
 
@@ -78,7 +94,10 @@ function buildInfoPlist(extensionPointId, principalClass) {
 </plist>`;
 }
 
-const ENTITLEMENTS_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
+// DeviceActivityMonitor extensions call the FamilyControls API directly and need the
+// restricted entitlement. Shield UI / Action extensions only respond to shield events
+// and must NOT include it — their provisioning profiles won't have Apple's approval for it.
+const ENTITLEMENTS_FULL = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -89,6 +108,25 @@ const ENTITLEMENTS_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
         <string>${APP_GROUP}</string>
     </array>
 </dict>
+</plist>`;
+
+// LucidShieldAction writes to shared UserDefaults → needs App Groups.
+const ENTITLEMENTS_MINIMAL = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>${APP_GROUP}</string>
+    </array>
+</dict>
+</plist>`;
+
+// LucidShieldUI only returns static visual config — no shared data access, no special entitlements needed.
+const ENTITLEMENTS_NONE = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict/>
 </plist>`;
 
 // ─── Phase 1: write files into ios/ ──────────────────────────────────────────
@@ -112,9 +150,14 @@ function createExtensionFiles(modConfig) {
       path.join(extDir, ext.swiftFile)
     );
     fs.writeFileSync(path.join(extDir, "Info.plist"), ext.infoPlist, "utf8");
+    const entitlements = ext.noEntitlements
+      ? ENTITLEMENTS_NONE
+      : ext.minimalEntitlements
+      ? ENTITLEMENTS_MINIMAL
+      : ENTITLEMENTS_FULL;
     fs.writeFileSync(
       path.join(extDir, `${ext.name}.entitlements`),
-      ENTITLEMENTS_PLIST,
+      entitlements,
       "utf8"
     );
 
@@ -233,15 +276,17 @@ function addExtensionTargets(modConfig) {
         bs.DEVELOPMENT_TEAM = `"${teamId}"`;
       }
       // Release: manual signing with the App Store profile.
-      // Debug: automatic signing so ad-hoc/dev builds aren't blocked by an App Store profile.
+      // Debug: skip signing entirely — EAS production builds only use Release,
+      // and automatic signing fails when no development profile exists for the bundle ID.
       if (isRelease && profileInfo && profileInfo.uuid) {
         bs.CODE_SIGN_STYLE = "Manual";
         bs.CODE_SIGN_IDENTITY = '"iPhone Distribution"';
         bs.PROVISIONING_PROFILE = `"${profileInfo.uuid}"`;
         bs.PROVISIONING_PROFILE_SPECIFIER = `"${profileInfo.name}"`;
       } else {
-        bs.CODE_SIGN_STYLE = "Automatic";
-        bs.CODE_SIGN_IDENTITY = '"Apple Development"';
+        bs.CODE_SIGN_STYLE = "Manual";
+        bs.CODE_SIGN_IDENTITY = '""';
+        bs.CODE_SIGN_REQUIRED = "NO";
       }
     }
 

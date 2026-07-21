@@ -26,6 +26,7 @@ expo-env.d.ts
 # Allow extension provisioning profiles (no private keys, needed for EAS build)
 !certs/Lucid_Shield_Action_AppStore.mobileprovision
 !certs/Lucid_Shield_Configuration_AppStore.mobileprovision
+!certs/Lucid_Shield_UI_AppStore.mobileprovision
 
 # Metro
 .metro-health-check*

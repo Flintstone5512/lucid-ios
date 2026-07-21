@@ -17,7 +17,11 @@ export default {
 
     ios: {
       bundleIdentifier: "com.yourapp.scrolltax",
+      buildNumber: "28",
       deploymentTarget: "16.4",
+      infoPlist: {
+        ITSAppUsesNonExemptEncryption: false,
+      },
       entitlements: {
         "com.apple.developer.family-controls": true,
         "com.apple.security.application-groups": [

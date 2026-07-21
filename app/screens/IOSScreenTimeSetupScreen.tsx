@@ -1,5 +1,5 @@
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import { NativeModules } from "react-native";
 import {
   Alert,
@@ -13,8 +13,12 @@ import {
 } from "react-native";
 import {
   applyShield,
+  getIOSAuthorizationStatus,
+  getIOSShieldStatus,
+  hasIOSAppSelection,
   presentAppPicker,
   requestIOSAuthorization,
+  startMonitoringBlockedApps,
 } from "../../services/nativeBridge";
 import { LucidTheme } from "../../constants/lucidTheme";
 
@@ -23,18 +27,20 @@ export default function IOSScreenTimeSetupScreen() {
   const [authorized, setAuthorized] = useState(false);
   const [appsSelected, setAppsSelected] = useState(false);
 
-  useEffect(() => {
-    const relevant = Object.keys(NativeModules).filter(k =>
-      k.toLowerCase().includes("screen") ||
-      k.toLowerCase().includes("shield") ||
-      k.toLowerCase().includes("family") ||
-      k.toLowerCase().includes("lucid") ||
-      k.toLowerCase().includes("activity")
-    );
-    console.log("Loaded native modules:", relevant);
-    console.log("ScreenTimeAuthorizationModule:", NativeModules.ScreenTimeAuthorizationModule);
-    console.log("LucidScreenTimeModule:", NativeModules.LucidScreenTimeModule);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      Promise.all([
+        getIOSAuthorizationStatus().catch(() => null),
+        getIOSShieldStatus().catch(() => null),
+        hasIOSAppSelection().catch(() => null),
+      ]).then(([authRes, shieldRes, selRes]) => {
+        if (authRes?.status === "approved") setAuthorized(true);
+        // Shield status is ground truth. Fall back to UserDefaults flag if shield was
+        // cleared (e.g. device restart) but selection data still exists.
+        if (shieldRes?.isShielded || selRes?.hasSelection) setAppsSelected(true);
+      });
+    }, [])
+  );
 
   async function runAuthorization() {
     try {
@@ -54,6 +60,13 @@ export default function IOSScreenTimeSetupScreen() {
         return;
       }
       setAuthorized(true);
+      // Immediately open the app picker so the user doesn't have to find step 2
+      try {
+        await presentAppPicker();
+        setAppsSelected(true);
+      } catch {
+        // Picker failed — user can still tap Choose Apps manually
+      }
     } catch (err: any) {
       Alert.alert("Authorization failed", err.message ?? "Something went wrong.");
     } finally {
@@ -64,8 +77,15 @@ export default function IOSScreenTimeSetupScreen() {
   async function chooseApps() {
     try {
       setLoading(true);
-      await presentAppPicker();
-      setAppsSelected(true);
+      const result = await presentAppPicker();
+      if (result.ok) {
+        // User pressed Save — shield was applied inside the native module.
+        setAppsSelected(true);
+      } else {
+        // User pressed Cancel — check if shield is already active from a prior save.
+        const shieldRes = await getIOSShieldStatus().catch(() => null);
+        if (shieldRes?.isShielded) setAppsSelected(true);
+      }
     } catch (err: any) {
       Alert.alert("Picker failed", err.message ?? "Something went wrong.");
     } finally {
@@ -75,6 +95,7 @@ export default function IOSScreenTimeSetupScreen() {
 
   async function finish() {
     try {
+      await startMonitoringBlockedApps();
       await applyShield();
       router.replace("/(tabs)");
     } catch (err: any) {

@@ -19,6 +19,16 @@ export async function presentAppPicker(): Promise<{ ok: boolean; cancelled?: boo
   return ScreenTimeModule.presentAppPicker();
 }
 
+export async function hasSelection(): Promise<{ ok: boolean; hasSelection: boolean }> {
+  if (!ScreenTimeModule) return { ok: false, hasSelection: false };
+  return ScreenTimeModule.hasSelection();
+}
+
+export async function getShieldStatus(): Promise<{ ok: boolean; isShielded: boolean }> {
+  if (!ScreenTimeModule) return { ok: false, isShielded: false };
+  return ScreenTimeModule.getShieldStatus();
+}
+
 export async function applyShield(): Promise<{ ok: boolean }> {
   if (!ScreenTimeModule) return unavailable;
   return ScreenTimeModule.applyShield();

@@ -7,15 +7,13 @@
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
-        "resourceClass": "m-medium",
-        "credentialsSource": "local"
+        "resourceClass": "m-medium"
       }
     },
     "preview": {
       "distribution": "internal",
       "ios": {
-        "resourceClass": "m-medium",
-        "credentialsSource": "local"
+        "resourceClass": "m-medium"
       }
     },
     "testflight": {
@@ -26,8 +24,7 @@
     },
     "production": {
       "ios": {
-        "resourceClass": "m-medium",
-        "credentialsSource": "local"
+        "resourceClass": "m-medium"
       },
       "android": {
         "buildType": "apk"

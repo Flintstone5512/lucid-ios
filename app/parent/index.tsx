@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ScrollView,
   View,
@@ -6,6 +6,7 @@ import {
   Pressable,
   TextInput,
   StyleSheet,
+  Platform,
 } from "react-native";
 
 import {
@@ -19,11 +20,15 @@ import { useRefocusStore } from "../../store/useRefocusStore";
 import UpgradeButton from "../../components/UpgradeButton";
 import MetricCard from "../../components/MetricCard";
 import { LucidTheme } from "../../constants/lucidTheme";
+import { applyShield, clearShield, getShieldStatus, presentAppPicker } from "../../modules/screen-time";
+import { router, useFocusEffect } from "expo-router";
 
 export default function ParentDashboard() {
   const [data, setData] = useState<any>(null);
   const [code, setCode] = useState("");
   const [focusMode, setFocusMode] = useState("soft");
+  const [selfBlocking, setSelfBlocking] = useState(false);
+  const [selfBlockLoading, setSelfBlockLoading] = useState(false);
 
   const { context, limits } = useRefocusStore();
 
@@ -34,6 +39,16 @@ export default function ParentDashboard() {
   useEffect(() => {
     load();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS === "ios") {
+        getShieldStatus().then((res) => {
+          setSelfBlocking(!!res.isShielded);
+        }).catch(() => {});
+      }
+    }, [])
+  );
 
   async function load() {
     try {
@@ -52,6 +67,29 @@ export default function ParentDashboard() {
   async function saveParentMode(mode: string) {
     await updateParentFocusMode(mode as any);
     setFocusMode(mode);
+  }
+
+  async function toggleSelfBlocking() {
+    try {
+      setSelfBlockLoading(true);
+      if (selfBlocking) {
+        await clearShield();
+        setSelfBlocking(false);
+      } else {
+        await applyShield();
+        const res = await getShieldStatus().catch(() => null);
+        if (res?.isShielded) {
+          setSelfBlocking(true);
+        } else {
+          // No selection yet — send to setup screen
+          router.push("/screens/IOSScreenTimeSetupScreen");
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setSelfBlockLoading(false);
+    }
   }
 
   if (!data) {
@@ -146,6 +184,43 @@ export default function ParentDashboard() {
           ))}
         </View>
       </View>
+
+      {/* =========================
+         🔥 iOS: BLOCK MY OWN DEVICE
+      ========================= */}
+      {Platform.OS === "ios" && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Block My Own Device</Text>
+          <Text style={styles.helper}>
+            As a parent, you can also block social apps on this device using the same system.
+          </Text>
+
+          <Pressable
+            disabled={selfBlockLoading}
+            onPress={toggleSelfBlocking}
+            style={[
+              styles.bigToggle,
+              selfBlocking ? styles.toggleOn : styles.toggleOff,
+              selfBlockLoading && { opacity: 0.5 },
+            ]}
+          >
+            <Text style={styles.toggleText}>
+              {selfBlockLoading
+                ? "Updating..."
+                : selfBlocking
+                ? "🟢 Self-Blocking ON"
+                : "🔴 Self-Blocking OFF"}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.secondaryBtn}
+            onPress={() => router.push("/screens/IOSScreenTimeSetupScreen")}
+          >
+            <Text style={styles.secondaryBtnText}>Choose Apps to Block</Text>
+          </Pressable>
+        </View>
+      )}
 
       {/* =========================
          🔥 ADD CHILD
@@ -421,5 +496,40 @@ const styles = StyleSheet.create({
 
   modeActive: {
     backgroundColor: "#D86732",
+  },
+
+  bigToggle: {
+    padding: 16,
+    borderRadius: 14,
+    alignItems: "center",
+    marginTop: 6,
+    marginBottom: 8,
+  },
+
+  toggleOn: {
+    backgroundColor: "#1DB954",
+  },
+
+  toggleOff: {
+    backgroundColor: "#FF4D4D",
+  },
+
+  toggleText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 15,
+  },
+
+  secondaryBtn: {
+    backgroundColor: "#151820",
+    padding: 14,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+
+  secondaryBtnText: {
+    color: "white",
+    textAlign: "center",
+    fontWeight: "700",
   },
 });

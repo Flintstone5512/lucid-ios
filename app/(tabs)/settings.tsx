@@ -18,7 +18,7 @@ import { router } from "expo-router";
 import { clearAuthToken } from "../../services/api";
 import { syncEnforcementSettings } from "../../services/nativeBridge";
 import { syncEnforcementDecision } from "../../services/enforcementSync";
-import { syncSettings as syncScreenTimeSettings } from "../../modules/screen-time";
+import { syncSettings as syncScreenTimeSettings, applyShield, clearShield } from "../../modules/screen-time";
 import { Platform } from "react-native";
 
 export default function SettingsScreen() {
@@ -152,6 +152,19 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
+      {/* iOS: re-select blocked apps */}
+      {Platform.OS === "ios" && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Blocked Apps</Text>
+          <Pressable
+            style={styles.secondaryBtn}
+            onPress={() => router.push("/screens/IOSScreenTimeSetupScreen")}
+          >
+            <Text style={styles.secondaryBtnText}>Re-select Blocked Apps</Text>
+          </Pressable>
+        </View>
+      )}
+
       {/* BLOCKING TOGGLE (🔥 CORE FIX) */}
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Blocking</Text>
@@ -188,6 +201,14 @@ export default function SettingsScreen() {
                     ? settings.parentFocusMode || "soft"
                     : settings.focusMode || "soft",
               });
+
+              if (Platform.OS === "ios") {
+                if (next) {
+                  await applyShield().catch(() => {});
+                } else {
+                  await clearShield().catch(() => {});
+                }
+              }
 
             } catch (err) {
               console.log("Toggle failed:", err);
