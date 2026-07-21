@@ -6,6 +6,11 @@ const MAIN_BUNDLE_ID = "com.yourapp.scrolltax";
 const APP_GROUP = "group.com.yourapp.scrolltax";
 const DEPLOYMENT_TARGET = "16.4";
 
+// LucidShieldAction (com.apple.screentime.shield.actions) and
+// LucidShieldUI (com.apple.screentime.shield.configuration) are omitted:
+// Apple's App Store validation rejects those extension point identifiers for
+// third-party apps regardless of Family Controls entitlement approval.
+// Blocking still works via DeviceActivityMonitor; users see Apple's default shield screen.
 const EXTENSIONS = [
   {
     name: "LucidShieldConfiguration",
@@ -17,33 +22,6 @@ const EXTENSIONS = [
       "DeviceActivityMonitorExtension"
     ),
     frameworks: ["DeviceActivity", "ManagedSettings", "FamilyControls"],
-  },
-  {
-    // Shield action extensions respond to button taps — they do NOT call the
-    // Family Controls API, so their profiles don't need (and won't have) that entitlement.
-    name: "LucidShieldAction",
-    bundleId: `${MAIN_BUNDLE_ID}.LucidShieldAction`,
-    swiftFile: "ShieldActionExtension.swift",
-    provisioningProfilePath: "certs/Lucid_Shield_Action_AppStore.mobileprovision",
-    infoPlist: buildInfoPlist(
-      "com.apple.screentime.shield.actions",
-      "ShieldActionExtension"
-    ),
-    frameworks: ["ManagedSettings"],
-    minimalEntitlements: true,
-  },
-  {
-    // Shield UI extensions only provide visual configuration — no shared data, no App Groups needed.
-    name: "LucidShieldUI",
-    bundleId: `${MAIN_BUNDLE_ID}.LucidShieldUI`,
-    swiftFile: "ShieldConfigurationExtension.swift",
-    provisioningProfilePath: "certs/Lucid_Shield_UI_AppStore.mobileprovision",
-    infoPlist: buildInfoPlist(
-      "com.apple.screentime.shield.configuration",
-      "ShieldConfigurationExtension"
-    ),
-    frameworks: ["ManagedSettingsUI", "ManagedSettings"],
-    noEntitlements: true,
   },
 ];
 
