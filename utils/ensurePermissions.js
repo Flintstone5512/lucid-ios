@@ -1,19 +1,18 @@
 import { Platform } from "react-native";
 import {
-    hasOverlayPermission,
-    hasUsageAccess,
-    isAccessibilityEnabled,
-    requestAndroidAccessibilityAccess,
-    requestAndroidOverlayAccess,
-    requestAndroidUsageAccess,
+  hasOverlayPermission,
+  hasUsageAccess,
+  isAccessibilityEnabled,
 } from "../services/nativePermissions";
 
 export async function ensurePermissions() {
   if (Platform.OS === "ios") return true;
 
-  const access = await isAccessibilityEnabled();
-  const overlay = await hasOverlayPermission();
-  const usage = await hasUsageAccess();
+  const [access, overlay, usage] = await Promise.all([
+    isAccessibilityEnabled(),
+    hasOverlayPermission(),
+    hasUsageAccess(),
+  ]);
 
   console.log("PERMISSION STATUS:", {
     accessibility: access?.enabled,
@@ -21,22 +20,5 @@ export async function ensurePermissions() {
     usage: usage?.granted,
   });
 
-  // 🔥 PRIORITY ORDER
-
-  if (!access?.enabled) {
-    await requestAndroidAccessibilityAccess();
-    return false;
-  }
-
-  if (!overlay?.granted) {
-    await requestAndroidOverlayAccess();
-    return false;
-  }
-
-  if (!usage?.granted) {
-    await requestAndroidUsageAccess();
-    return false;
-  }
-
-  return true;
+  return Boolean(access?.enabled && overlay?.granted && usage?.granted);
 }

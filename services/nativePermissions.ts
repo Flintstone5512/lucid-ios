@@ -7,11 +7,10 @@ const {
 } = NativeModules;
 
 /* =========================
-   🔥 ACCESSIBILITY
+   ACCESSIBILITY
 ========================= */
 
 export async function isAccessibilityEnabled() {
-  if (__DEV__) return { enabled: true };
   if (Platform.OS !== "android") return { enabled: false };
 
   return (
@@ -22,18 +21,16 @@ export async function isAccessibilityEnabled() {
 }
 
 export async function requestAndroidAccessibilityAccess() {
-  if (__DEV__) return;
   if (Platform.OS !== "android") return;
 
   await AccessibilityBridgeModule?.openAccessibilitySettings?.();
 }
 
 /* =========================
-   🔥 OVERLAY
+   OVERLAY
 ========================= */
 
 export async function hasOverlayPermission() {
-  if (__DEV__) return { granted: true };
   if (Platform.OS !== "android") return { granted: false };
 
   return (
@@ -44,18 +41,16 @@ export async function hasOverlayPermission() {
 }
 
 export async function requestAndroidOverlayAccess() {
-  if (__DEV__) return;
   if (Platform.OS !== "android") return;
 
   await OverlayPermissionModule?.openOverlaySettings?.();
 }
 
 /* =========================
-   🔥 USAGE ACCESS
+   USAGE ACCESS
 ========================= */
 
 export async function hasUsageAccess() {
-  if (__DEV__) return { granted: true };
   if (Platform.OS !== "android") return { granted: false };
 
   return (
@@ -66,7 +61,6 @@ export async function hasUsageAccess() {
 }
 
 export async function requestAndroidUsageAccess() {
-  if (__DEV__) return;
   if (Platform.OS !== "android") return;
 
   await UsageAccessModule?.openUsageAccessSettings?.();

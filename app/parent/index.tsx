@@ -21,6 +21,10 @@ import UpgradeButton from "../../components/UpgradeButton";
 import MetricCard from "../../components/MetricCard";
 import { LucidTheme } from "../../constants/lucidTheme";
 import { applyShield, clearShield, getShieldStatus, presentAppPicker } from "../../modules/screen-time";
+import {
+  setAndroidParentSelfBlocking,
+  getAndroidParentSelfBlockingStatus,
+} from "../../services/nativeBridge";
 import { router, useFocusEffect } from "expo-router";
 
 export default function ParentDashboard() {
@@ -45,6 +49,10 @@ export default function ParentDashboard() {
       if (Platform.OS === "ios") {
         getShieldStatus().then((res) => {
           setSelfBlocking(!!res.isShielded);
+        }).catch(() => {});
+      } else if (Platform.OS === "android") {
+        getAndroidParentSelfBlockingStatus().then((res) => {
+          setSelfBlocking(!!res?.enabled);
         }).catch(() => {});
       }
     }, [])
@@ -85,6 +93,19 @@ export default function ParentDashboard() {
           router.push("/screens/IOSScreenTimeSetupScreen");
         }
       }
+    } catch {
+      // ignore
+    } finally {
+      setSelfBlockLoading(false);
+    }
+  }
+
+  async function toggleAndroidSelfBlocking() {
+    try {
+      setSelfBlockLoading(true);
+      const next = !selfBlocking;
+      await setAndroidParentSelfBlocking(next);
+      setSelfBlocking(next);
     } catch {
       // ignore
     } finally {
@@ -218,6 +239,38 @@ export default function ParentDashboard() {
             onPress={() => router.push("/screens/IOSScreenTimeSetupScreen")}
           >
             <Text style={styles.secondaryBtnText}>Choose Apps to Block</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* =========================
+         🔥 ANDROID: BLOCK MY OWN DEVICE
+      ========================= */}
+      {Platform.OS === "android" && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Block My Own Device</Text>
+          <Text style={styles.helper}>
+            As a parent, you can also block social apps on this device. The
+            accessibility service will intercept them just like it does for
+            your children.
+          </Text>
+
+          <Pressable
+            disabled={selfBlockLoading}
+            onPress={toggleAndroidSelfBlocking}
+            style={[
+              styles.bigToggle,
+              selfBlocking ? styles.toggleOn : styles.toggleOff,
+              selfBlockLoading && { opacity: 0.5 },
+            ]}
+          >
+            <Text style={styles.toggleText}>
+              {selfBlockLoading
+                ? "Updating..."
+                : selfBlocking
+                ? "🟢 Self-Blocking ON"
+                : "🔴 Self-Blocking OFF"}
+            </Text>
           </Pressable>
         </View>
       )}

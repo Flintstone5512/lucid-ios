@@ -2,14 +2,7 @@ import * as ExpoLinking from "expo-linking";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useRef, useState } from "react";
-import {
-  AppState,
-  Platform,
-  Pressable,
-  Linking as RNLinking,
-  Text,
-  View,
-} from "react-native";
+import { AppState, Platform } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { OnboardingProvider } from "../context/OnboardingContext";
@@ -26,13 +19,7 @@ import {
   applyShield,
   getIOSAuthorizationStatus,
   grantAndroidUnlock,
-  hasOverlayPermission,
-  hasUsageAccess,
   hideBlockingOverlay,
-  isAccessibilityEnabled,
-  requestAndroidAccessibilityAccess,
-  requestAndroidOverlayAccess,
-  requestAndroidUsageAccess,
   startMonitoringBlockedApps,
 } from "../services/nativeBridge";
 import { checkAndClearPendingSession } from "../modules/screen-time";
@@ -43,6 +30,7 @@ export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [permissionsReady, setPermissionsReady] = useState(false);
   const [iosScreenTimeChecked, setIosScreenTimeChecked] = useState(false);
+  const [androidPermChecked, setAndroidPermChecked] = useState(false);
 
   const lastDeepLinkAt = useRef(0); // 🔥 debounce — prevents double firing within 1s
 
@@ -63,33 +51,6 @@ export default function RootLayout() {
       console.log("Permission refresh failed:", err);
       setPermissionsReady(false);
       return false;
-    }
-  }
-
-  async function openMissingPermissionSettings() {
-    try {
-      const accessibility = await isAccessibilityEnabled();
-      if (!accessibility?.enabled) {
-        await requestAndroidAccessibilityAccess();
-        return;
-      }
-
-      const overlay = await hasOverlayPermission();
-      if (!overlay?.granted) {
-        await requestAndroidOverlayAccess();
-        return;
-      }
-
-      const usage = await hasUsageAccess();
-      if (!usage?.granted) {
-        await requestAndroidUsageAccess();
-        return;
-      }
-
-      await RNLinking.openSettings();
-    } catch (err) {
-      console.log("Open permission settings failed:", err);
-      await RNLinking.openSettings();
     }
   }
 
@@ -246,6 +207,24 @@ async function handleDeepLink(url: string) {
   }, [ready, iosScreenTimeChecked]);
 
   /* =========================
+     🔥 ANDROID PERMISSION CHECK
+  ========================= */
+
+  useEffect(() => {
+    if (!ready || androidPermChecked || Platform.OS !== "android") return;
+    setAndroidPermChecked(true);
+
+    async function checkAndroid() {
+      const ok = await refreshPermissions();
+      if (!ok) {
+        router.replace("/screens/AndroidPermissionsSetupScreen");
+      }
+    }
+
+    checkAndroid();
+  }, [ready, androidPermChecked]);
+
+  /* =========================
      🔁 RECHECK PERMISSIONS
   ========================= */
 
@@ -286,76 +265,6 @@ async function handleDeepLink(url: string) {
     <View style={{ flex: 1, backgroundColor: "#0e1424" }} />
   );
 }
-
-  /* =========================
-     🔐 PERMISSION LOCK
-  ========================= */
-
-  if (!permissionsReady) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: "#0B0F1A",
-          padding: 24,
-        }}
-      >
-        <Text
-          style={{
-            color: "white",
-            fontSize: 22,
-            fontWeight: "800",
-            textAlign: "center",
-          }}
-        >
-          Enable permissions to continue
-        </Text>
-
-        <Text
-          style={{
-            color: "#A9BDDB",
-            fontSize: 14,
-            textAlign: "center",
-            marginTop: 10,
-            lineHeight: 20,
-          }}
-        >
-          Lucid needs Accessibility, Usage Access, and Overlay permission to
-          block distracting apps and show your flashcard session.
-        </Text>
-
-        <Pressable
-          onPress={openMissingPermissionSettings}
-          style={{
-            marginTop: 24,
-            backgroundColor: "#D86732",
-            paddingVertical: 14,
-            paddingHorizontal: 22,
-            borderRadius: 12,
-          }}
-        >
-          <Text style={{ color: "white", fontWeight: "800" }}>
-            Open Required Permission
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={refreshPermissions}
-          style={{
-            marginTop: 14,
-            paddingVertical: 12,
-            paddingHorizontal: 18,
-          }}
-        >
-          <Text style={{ color: "#A9BDDB", fontWeight: "700" }}>
-            I enabled it — check again
-          </Text>
-        </Pressable>
-      </View>
-    );
-  }
 
   /* =========================
      🚀 MAIN APP

@@ -274,3 +274,31 @@ export async function reopenBlockedApp() {
     return { ok: false };
   }
 }
+
+/* =========================
+   🔥 PARENT SELF-BLOCKING (ANDROID)
+========================= */
+
+export async function setAndroidParentSelfBlocking(enabled: boolean) {
+  if (Platform.OS !== "android") return { ok: false };
+  try {
+    await BlockingOverlayModule?.setParentSelfBlocking?.(enabled);
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
+}
+
+export async function getAndroidParentSelfBlockingStatus() {
+  if (Platform.OS !== "android") return { ok: false, enabled: false };
+  try {
+    return (
+      (await BlockingOverlayModule?.getParentSelfBlocking?.()) || {
+        ok: false,
+        enabled: false,
+      }
+    );
+  } catch {
+    return { ok: false, enabled: false };
+  }
+}
