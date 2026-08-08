@@ -2,7 +2,7 @@ import * as ExpoLinking from "expo-linking";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useRef, useState } from "react";
-import { AppState, Platform } from "react-native";
+import { AppState, Platform, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { OnboardingProvider } from "../context/OnboardingContext";
@@ -15,6 +15,7 @@ import { loadMode } from "../services/settingsStorage";
 import { useRefocusStore } from "../store/useRefocusStore";
 import { ensurePermissions } from "../utils/ensurePermissions";
 
+import * as Notifications from "expo-notifications";
 import {
   applyShield,
   getIOSAuthorizationStatus,
@@ -193,6 +194,9 @@ async function handleDeepLink(url: string) {
       try {
         const authStatus = await getIOSAuthorizationStatus();
         if (authStatus?.status === "approved") {
+          // Request notification permission so DeviceActivityMonitor can
+          // deliver the "Time's up" alert when the usage threshold is hit.
+          Notifications.requestPermissionsAsync().catch(() => {});
           startMonitoringBlockedApps().catch(() => {});
           applyShield().catch(() => {});
         } else {

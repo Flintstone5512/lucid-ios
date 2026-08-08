@@ -69,6 +69,11 @@ export async function startMonitoringBlockedApps() {
   return ScreenTime.startMonitoringBlockedApps();
 }
 
+export async function setDailyLimit(minutes: number) {
+  if (Platform.OS !== "ios") return { ok: true };
+  return ScreenTime.setDailyLimit(minutes);
+}
+
 /* =========================
    🟢 ANDROID PERMISSIONS
 ========================= */

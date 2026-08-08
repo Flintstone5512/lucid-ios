@@ -63,6 +63,11 @@ export async function startMonitoringBlockedApps(): Promise<{ ok: boolean; error
   return ScreenTimeModule.startMonitoringBlockedApps();
 }
 
+export async function setDailyLimit(minutes: number): Promise<{ ok: boolean }> {
+  if (!ScreenTimeModule) return { ok: false };
+  return ScreenTimeModule.setDailyLimit(minutes);
+}
+
 export async function stopMonitoring(): Promise<{ ok: boolean }> {
   if (!ScreenTimeModule) return { ok: false };
   return ScreenTimeModule.stopMonitoring();

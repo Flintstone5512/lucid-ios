@@ -181,6 +181,12 @@ public class ScreenTimeModule: Module {
       return ["ok": true]
     }
 
+    AsyncFunction("setDailyLimit") { (minutes: Int) -> [String: Any] in
+      self.sharedDefaults?.set(minutes, forKey: "dailyLimitMinutes")
+      self.sharedDefaults?.synchronize()
+      return ["ok": true]
+    }
+
     AsyncFunction("checkAndClearPendingSession") { () -> [String: Any] in
       let defaults = self.sharedDefaults ?? UserDefaults.standard
       let pending = defaults.bool(forKey: "pendingStudySession")
@@ -191,28 +197,58 @@ public class ScreenTimeModule: Module {
       return ["ok": true, "pending": pending]
     }
 
-    // Sets up a DeviceActivity schedule so the monitor extension reapplies the
-    // shield on device restart. Starts the interval ~1 minute from now so
-    // intervalDidStart fires immediately rather than waiting until midnight.
+    // Sets up a DeviceActivity schedule with a per-app usage threshold.
+    // When the user has used any of their blocked apps for dailyLimitMinutes
+    // within the interval, eventDidReachThreshold fires in the monitor extension
+    // which shields the apps and sends the study-session notification.
+    // The interval spans midnight-to-midnight so the counter resets each day.
     AsyncFunction("startMonitoringBlockedApps") { () -> [String: Any] in
       if #available(iOS 16, *) {
         let center = DeviceActivityCenter()
-        // Reset the schedule so it always anchors to the current time.
         center.stopMonitoring([.daily])
 
-        let cal = Calendar.current
-        let startDate = cal.date(byAdding: .minute, value: 1, to: Date())!
-        let endDate   = cal.date(byAdding: .hour,   value: 23, to: startDate)!
+        // Full-day interval so the usage counter resets at midnight.
+        var intervalStart = DateComponents()
+        intervalStart.hour = 0
+        intervalStart.minute = 0
+
+        var intervalEnd = DateComponents()
+        intervalEnd.hour = 23
+        intervalEnd.minute = 59
 
         let schedule = DeviceActivitySchedule(
-          intervalStart: cal.dateComponents([.hour, .minute], from: startDate),
-          intervalEnd:   cal.dateComponents([.hour, .minute], from: endDate),
+          intervalStart: intervalStart,
+          intervalEnd:   intervalEnd,
           repeats: true
         )
+
+        // Load the saved app selection to build the threshold event.
+        let data = self.sharedDefaults?.data(forKey: "selectedAppsData")
+                ?? UserDefaults.standard.data(forKey: "selectedAppsData")
+
+        let stored = self.sharedDefaults?.integer(forKey: "dailyLimitMinutes") ?? 0
+        let limitMinutes = stored > 0 ? stored : 30
+
+        var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
+
+        if let data = data,
+           let selection = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: data) {
+          let appTokens = selection.applicationTokens
+          let catTokens = selection.categoryTokens
+
+          if !appTokens.isEmpty || !catTokens.isEmpty {
+            let event = DeviceActivityEvent(
+              applications: appTokens,
+              threshold: DateComponents(minute: limitMinutes)
+            )
+            events[DeviceActivityEvent.Name("usage-limit")] = event
+          }
+        }
+
         do {
-          try center.startMonitoring(.daily, during: schedule)
+          try center.startMonitoring(.daily, during: schedule, events: events)
         } catch {
-          // Ignore — not a hard failure
+          // Not a hard failure — shield still applies via applyShield() calls
         }
       }
       return ["ok": true]
