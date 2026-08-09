@@ -1,12 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   Pressable,
   StyleSheet,
+  AppState,
+  Linking,
+  Platform,
 } from "react-native";
 import { router } from "expo-router";
+import * as Notifications from "expo-notifications";
 
 import { useRefocusStore } from "../../store/useRefocusStore";
 import { getSharedState } from "../../services/api";
@@ -17,6 +21,13 @@ import { LucidTheme } from "../../constants/lucidTheme";
 export default function UserDashboard() {
   const { setStatePatch, streak, usage } = useRefocusStore();
   const { plan } = useRefocusStore();
+  const [notificationsGranted, setNotificationsGranted] = useState(true);
+
+  async function checkNotificationPermission() {
+    if (Platform.OS !== "ios") return;
+    const { status } = await Notifications.getPermissionsAsync();
+    setNotificationsGranted(status === "granted");
+  }
 
   useEffect(() => {
     async function load() {
@@ -32,6 +43,14 @@ export default function UserDashboard() {
     }
 
     load();
+    checkNotificationPermission();
+
+    // Re-check whenever the user returns from Settings
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") checkNotificationPermission();
+    });
+
+    return () => sub.remove();
   }, []);
 
   return (
@@ -39,6 +58,21 @@ export default function UserDashboard() {
       style={styles.container}
       contentContainerStyle={{ paddingBottom: 40 }}
     >
+      {/* =========================
+         🔔 NOTIFICATION PERMISSION BANNER
+      ========================= */}
+      {!notificationsGranted && (
+        <Pressable
+          style={styles.notifBanner}
+          onPress={() => Linking.openSettings()}
+        >
+          <Text style={styles.notifBannerTitle}>⚠️ Notifications Disabled</Text>
+          <Text style={styles.notifBannerBody}>
+            Lucid can't alert you when your time is up. Tap to enable in Settings.
+          </Text>
+        </Pressable>
+      )}
+
       {/* =========================
          🔥 HEADER CARD
       ========================= */}
@@ -249,5 +283,27 @@ const styles = StyleSheet.create({
     color: "#A9BDDB",
     marginTop: 6,
     textAlign: "center",
+  },
+
+  notifBanner: {
+    backgroundColor: "#7c2d12",
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#ef4444",
+  },
+
+  notifBannerTitle: {
+    color: "#fecaca",
+    fontWeight: "800",
+    fontSize: 15,
+    marginBottom: 4,
+  },
+
+  notifBannerBody: {
+    color: "#fca5a5",
+    fontSize: 13,
+    lineHeight: 18,
   },
 });
