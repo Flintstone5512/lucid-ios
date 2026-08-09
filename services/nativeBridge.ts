@@ -1,5 +1,7 @@
 import { NativeModules, Platform } from "react-native";
 import * as ScreenTime from "../modules/screen-time";
+import * as Notifications from "expo-notifications";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const isDev = __DEV__;
 
@@ -66,11 +68,36 @@ export async function scheduleUnlockWindow(expiresAt: number) {
 
 export async function startMonitoringBlockedApps() {
   if (Platform.OS !== "ios") return { ok: true };
+
+  // Schedule notification from the main app — DeviceActivityMonitor extensions
+  // cannot reliably deliver UNUserNotificationCenter notifications on iOS.
+  try {
+    const stored = await AsyncStorage.getItem("blockIntervalMinutes");
+    const minutes = stored ? parseInt(stored, 10) : 30;
+    if (minutes > 0) {
+      await Notifications.cancelScheduledNotificationAsync("lucid-threshold").catch(() => {});
+      await Notifications.scheduleNotificationAsync({
+        identifier: "lucid-threshold",
+        content: {
+          title: "Time's up 🧠",
+          body: "Complete a quick study session to unlock your apps.",
+          sound: true,
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: minutes * 60,
+          repeats: false,
+        },
+      });
+    }
+  } catch {}
+
   return ScreenTime.startMonitoringBlockedApps();
 }
 
 export async function setDailyLimit(minutes: number) {
   if (Platform.OS !== "ios") return { ok: true };
+  await AsyncStorage.setItem("blockIntervalMinutes", String(minutes));
   return ScreenTime.setDailyLimit(minutes);
 }
 
