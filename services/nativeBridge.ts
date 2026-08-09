@@ -69,8 +69,23 @@ export async function scheduleUnlockWindow(expiresAt: number) {
 export async function startMonitoringBlockedApps() {
   if (Platform.OS !== "ios") return { ok: true };
 
-  // Schedule notification from the main app — DeviceActivityMonitor extensions
-  // cannot reliably deliver UNUserNotificationCenter notifications on iOS.
+  // Only schedule if there is no existing pending notification.
+  // This prevents the timer from resetting every time the app opens.
+  // Force-reschedule happens via scheduleThresholdNotification(), which is
+  // called explicitly after session completion and on settings save.
+  try {
+    const pending = await Notifications.getAllScheduledNotificationsAsync();
+    const alreadyScheduled = pending.some((n) => n.identifier === "lucid-threshold");
+    if (!alreadyScheduled) {
+      await scheduleThresholdNotification();
+    }
+  } catch {}
+
+  return ScreenTime.startMonitoringBlockedApps();
+}
+
+export async function scheduleThresholdNotification() {
+  if (Platform.OS !== "ios") return;
   try {
     const stored = await AsyncStorage.getItem("blockIntervalMinutes");
     const minutes = stored ? parseInt(stored, 10) : 30;
@@ -91,13 +106,12 @@ export async function startMonitoringBlockedApps() {
       });
     }
   } catch {}
-
-  return ScreenTime.startMonitoringBlockedApps();
 }
 
 export async function setDailyLimit(minutes: number) {
   if (Platform.OS !== "ios") return { ok: true };
   await AsyncStorage.setItem("blockIntervalMinutes", String(minutes));
+  await scheduleThresholdNotification(); // force-reschedule with new interval
   return ScreenTime.setDailyLimit(minutes);
 }
 
@@ -265,9 +279,10 @@ export async function grantNativeUnlock(expiresAtIso: string) {
     return grantAndroidUnlock(expiresAtIso);
   } else if (Platform.OS === "ios") {
     const result = await scheduleUnlockWindow(epochMs);
-    // Restart DeviceActivity monitoring so the interval counter resets to zero.
-    // Without this the threshold only fires once per day instead of after every session.
+    // Restart DeviceActivity monitoring so the usage counter resets to zero,
+    // and force-reschedule the notification for the next interval.
     startMonitoringBlockedApps().catch(() => {});
+    scheduleThresholdNotification().catch(() => {});
     return result;
   }
   return { ok: false };
