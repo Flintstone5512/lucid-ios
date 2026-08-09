@@ -90,39 +90,10 @@ const EXTENSIONS = [
     entitlements: ENTITLEMENTS_FULL,
     manualSigning: true,
   },
-  {
-    // Shows the custom "Time to Study / Start Study Session" shield UI.
-    // Extension point: com.apple.deviceactivity.shield.configuration (correct identifier).
-    name: "LucidShieldUI",
-    bundleId: `${MAIN_BUNDLE_ID}.LucidShieldUI`,
-    swiftFile: "LucidShieldConfigurationExtension.swift",
-    srcDir: "LucidShieldConfiguration",
-    provisioningProfilePath: "certs/Lucid_Shield_UI_AppStore.mobileprovision",
-    infoPlist: buildInfoPlist(
-      "com.apple.deviceactivity.shield.configuration",
-      "LucidShieldConfigurationExtension"
-    ),
-    frameworks: ["ManagedSettings", "ManagedSettingsUI"],
-    entitlements: ENTITLEMENTS_APP_GROUP,
-    manualSigning: true,
-  },
-  {
-    // Handles the "Start Study Session" button tap on the shield.
-    // Writes pendingStudySession=true → returns .defer → iOS opens the main app.
-    // Extension point: com.apple.deviceactivity.shield.action (correct identifier).
-    name: "LucidShieldAction",
-    bundleId: `${MAIN_BUNDLE_ID}.LucidShieldAction`,
-    swiftFile: "ShieldActionExtension.swift",
-    srcDir: "LucidShieldAction",
-    provisioningProfilePath: "certs/Lucid_Shield_Action_AppStore.mobileprovision",
-    infoPlist: buildInfoPlist(
-      "com.apple.deviceactivity.shield.action",
-      "ShieldActionExtension"
-    ),
-    frameworks: ["ManagedSettings"],
-    entitlements: ENTITLEMENTS_APP_GROUP,
-    manualSigning: true,
-  },
+  // LucidShieldUI (shield.configuration) and LucidShieldAction (shield.action)
+  // removed — Apple App Store validation rejects both extension point identifiers
+  // for third-party apps (error 90349). The notification-based workaround in
+  // DeviceActivityMonitorExtension.swift replaces their functionality.
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
