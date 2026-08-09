@@ -25,6 +25,7 @@ export function showRewardedAd(onRewardEarned) {
   const {
     RewardedAd,
     RewardedAdEventType,
+    AdEventType,
   } = require("react-native-google-mobile-ads");
 
   const adUnitId = Platform.select({
@@ -36,28 +37,43 @@ export function showRewardedAd(onRewardEarned) {
     requestNonPersonalizedAdsOnly: true,
   });
 
-  let rewardListener;
+  let rewardedListener;
   let loadedListener;
   let closedListener;
+  let errorListener;
+
+  function cleanup() {
+    rewardedListener?.();
+    loadedListener?.();
+    closedListener?.();
+    errorListener?.();
+  }
 
   loadedListener = rewarded.addAdEventListener(
     RewardedAdEventType.LOADED,
     () => rewarded.show()
   );
 
-  rewardListener = rewarded.addAdEventListener(
+  rewardedListener = rewarded.addAdEventListener(
     RewardedAdEventType.EARNED_REWARD,
     () => {
       if (onRewardEarned) onRewardEarned();
     }
   );
 
+  // AdEventType.CLOSED (not RewardedAdEventType) — rewarded ads inherit base events
   closedListener = rewarded.addAdEventListener(
-    RewardedAdEventType.CLOSED,
+    AdEventType.CLOSED,
+    () => cleanup()
+  );
+
+  // If the ad fails to load, fall back so the user isn't stuck
+  errorListener = rewarded.addAdEventListener(
+    AdEventType.ERROR,
     () => {
-      rewardListener?.();
-      loadedListener?.();
-      closedListener?.();
+      cleanup();
+      console.log("[AD] Load failed — skipping ad, granting reward");
+      if (onRewardEarned) onRewardEarned();
     }
   );
 
