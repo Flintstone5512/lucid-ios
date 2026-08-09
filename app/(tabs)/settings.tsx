@@ -18,7 +18,8 @@ import { router } from "expo-router";
 import { clearAuthToken } from "../../services/api";
 import { syncEnforcementSettings } from "../../services/nativeBridge";
 import { syncEnforcementDecision } from "../../services/enforcementSync";
-import { syncSettings as syncScreenTimeSettings, applyShield, clearShield } from "../../modules/screen-time";
+import { syncSettings as syncScreenTimeSettings, applyShield, clearShield, setDailyLimit } from "../../modules/screen-time";
+import { startMonitoringBlockedApps } from "../../services/nativeBridge";
 import { Platform } from "react-native";
 
 export default function SettingsScreen() {
@@ -84,6 +85,15 @@ export default function SettingsScreen() {
           Number(payload.timerPolicy.unlockMinutes),
           settings.focusMode || "soft"
         ).catch(() => {});
+
+        // Push the new daily limit and re-register the DeviceActivity threshold
+        // so the monitor extension fires after the updated duration, not the old one.
+        const limitMinutes = Number(payload.socialPolicy.dailyLimitMinutes);
+        if (limitMinutes > 0) {
+          setDailyLimit(limitMinutes)
+            .then(() => startMonitoringBlockedApps())
+            .catch(() => {});
+        }
       }
 
       alert("Settings saved");

@@ -237,7 +237,11 @@ export async function grantNativeUnlock(expiresAtIso: string) {
   if (Platform.OS === "android") {
     return grantAndroidUnlock(expiresAtIso);
   } else if (Platform.OS === "ios") {
-    return scheduleUnlockWindow(epochMs);
+    const result = await scheduleUnlockWindow(epochMs);
+    // Restart DeviceActivity monitoring so the interval counter resets to zero.
+    // Without this the threshold only fires once per day instead of after every session.
+    startMonitoringBlockedApps().catch(() => {});
+    return result;
   }
   return { ok: false };
 }
