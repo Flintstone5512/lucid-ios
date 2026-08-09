@@ -239,6 +239,7 @@ public class ScreenTimeModule: Module {
           if !appTokens.isEmpty || !catTokens.isEmpty {
             let event = DeviceActivityEvent(
               applications: appTokens,
+              categories: catTokens,
               threshold: DateComponents(minute: limitMinutes)
             )
             events[DeviceActivityEvent.Name("usage-limit")] = event

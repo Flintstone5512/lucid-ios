@@ -19,6 +19,7 @@ import * as Notifications from "expo-notifications";
 import {
   applyShield,
   getIOSAuthorizationStatus,
+  getIOSShieldStatus,
   grantAndroidUnlock,
   hideBlockingOverlay,
   startMonitoringBlockedApps,
@@ -246,12 +247,23 @@ async function handleDeepLink(url: string) {
           // cleared by a device restart or system event while the app was backgrounded.
           applyShield().catch(() => {});
 
-          // Check if a ShieldAction triggered a study session
           try {
-            const result = await checkAndClearPendingSession();
-            if (result?.pending) {
-              console.log("🛡️ pendingSession detected — navigating to session");
+            // Primary: check flag set by DeviceActivityMonitor extension
+            const sessionResult = await checkAndClearPendingSession();
+            if (sessionResult?.pending) {
               setTimeout(() => router.replace("/session"), 120);
+              return;
+            }
+
+            // Fallback: if apps are shielded and we have no active unlock window,
+            // the user needs a session regardless of whether the extension fired.
+            const { unlockedUntil } = useRefocusStore.getState();
+            const isUnlocked = unlockedUntil > Date.now();
+            if (!isUnlocked) {
+              const shieldResult = await getIOSShieldStatus();
+              if (shieldResult?.isShielded) {
+                setTimeout(() => router.replace("/session"), 120);
+              }
             }
           } catch (err) {
             // ScreenTimeModule unavailable on simulator
