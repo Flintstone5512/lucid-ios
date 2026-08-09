@@ -29,7 +29,6 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
-  const [permissionsReady, setPermissionsReady] = useState(false);
   const [iosScreenTimeChecked, setIosScreenTimeChecked] = useState(false);
   const [androidPermChecked, setAndroidPermChecked] = useState(false);
 
@@ -46,11 +45,9 @@ export default function RootLayout() {
   async function refreshPermissions() {
     try {
       const ok = await ensurePermissions();
-      setPermissionsReady(Boolean(ok));
       return Boolean(ok);
     } catch (err) {
       console.log("Permission refresh failed:", err);
-      setPermissionsReady(false);
       return false;
     }
   }
@@ -126,6 +123,12 @@ async function handleDeepLink(url: string) {
             await SplashScreen.hideAsync();
             return; // 🚀 EXIT EARLY (skip normal flow)
           }
+        }
+
+        // 🔔 Request notification permission on iOS as early as possible so
+        // the DeviceActivityMonitor extension can deliver threshold alerts.
+        if (Platform.OS === "ios") {
+          Notifications.requestPermissionsAsync().catch(() => {});
         }
 
         // 🔥 STEP 1: permissions
