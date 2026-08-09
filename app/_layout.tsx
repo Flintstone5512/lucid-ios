@@ -261,6 +261,29 @@ async function handleDeepLink(url: string) {
   }, []);
 
   /* =========================
+     🔔 NOTIFICATION TAP
+  ========================= */
+
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+
+    // Handles the case where the app is already foregrounded when the user
+    // taps the "Time's up" notification — AppState won't fire in that case,
+    // so this listener is the only path that catches the tap.
+    const sub = Notifications.addNotificationResponseReceivedListener(() => {
+      checkAndClearPendingSession()
+        .then((result) => {
+          if (result?.pending) {
+            setTimeout(() => router.replace("/session"), 120);
+          }
+        })
+        .catch(() => {});
+    });
+
+    return () => sub.remove();
+  }, []);
+
+  /* =========================
      ⏳ LOADING
   ========================= */
 
