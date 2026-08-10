@@ -26,7 +26,8 @@ export default function SettingsScreen() {
   const [settings, setSettings] = useState<any>(null);
   const [saving, setSaving] = useState(false);
 
-  const { plan, context } = useRefocusStore();
+  const { plan, adMode, context } = useRefocusStore();
+  const [adModeLoading, setAdModeLoading] = useState(false);
   const role = context?.role || "solo";
 
   useEffect(() => {
@@ -148,19 +149,30 @@ export default function SettingsScreen() {
           <UpgradeButton label="Upgrade → Unlimited Access" />
         )}
 
-        <Text style={styles.subLabel}>More Decks</Text>
-
-        <Pressable
-          onPress={async () => {
-            await api.post("/ad-mode/enable-ad-mode");
-            await refreshUserContext();
-          }}
-          style={styles.secondaryBtn}
-        >
-          <Text style={styles.secondaryBtnText}>
-            Enable Ads for More Decks
-          </Text>
-        </Pressable>
+        {plan === "free" && adMode !== "ad_supported" && (
+          <>
+            <Text style={styles.subLabel}>More Decks</Text>
+            <Pressable
+              onPress={async () => {
+                try {
+                  setAdModeLoading(true);
+                  await api.post("/ad-mode/enable-ad-mode");
+                  await refreshUserContext();
+                } catch (err) {
+                  console.error("Failed to enable ad mode", err);
+                } finally {
+                  setAdModeLoading(false);
+                }
+              }}
+              style={[styles.secondaryBtn, adModeLoading && { opacity: 0.5 }]}
+              disabled={adModeLoading}
+            >
+              <Text style={styles.secondaryBtnText}>
+                {adModeLoading ? "Enabling..." : "Enable Ads for More Decks"}
+              </Text>
+            </Pressable>
+          </>
+        )}
       </View>
 
       {/* iOS: re-select blocked apps */}

@@ -9,7 +9,7 @@ export async function refreshUserContext() {
 
     useRefocusStore.getState().setStatePatch({
       context: {
-        settings: res.data.settings,
+        settings: res.data.context?.settings,
       },
     });
 

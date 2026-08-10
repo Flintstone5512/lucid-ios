@@ -8,9 +8,9 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { OnboardingProvider } from "../context/OnboardingContext";
 import {
   bootstrapAuthToken,
-  getContext,
   requestUnlock,
 } from "../services/api";
+import { refreshUserContext } from "../services/contextService";
 import { loadMode } from "../services/settingsStorage";
 import { useRefocusStore } from "../store/useRefocusStore";
 import { ensurePermissions } from "../utils/ensurePermissions";
@@ -155,7 +155,7 @@ async function handleDeepLink(url: string) {
 
           if (token) {
             try {
-              await getContext();
+              await refreshUserContext();
             } catch (err) {
               console.log("⚠️ Context failed:", err);
             }
