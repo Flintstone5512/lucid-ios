@@ -1,6 +1,6 @@
 export default {
   expo: {
-    name: "ScrollTax",
+    name: "Lucid",
     slug: "scroll-tax",
     scheme: "scroll-tax",
     owner: "principledwarrior",
