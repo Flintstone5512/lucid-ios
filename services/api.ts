@@ -139,6 +139,11 @@ export async function getDecks() {
   return res.data.decks || res.data;
 }
 
+export async function deleteDeck(deckId: string) {
+  const res = await api.delete(`/decks/${deckId}`);
+  return res.data;
+}
+
 
 export async function getSession(deckId: string) {
   const res = await api.get(`/reviews/session/${deckId}`);

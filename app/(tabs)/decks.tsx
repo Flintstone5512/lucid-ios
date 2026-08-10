@@ -6,13 +6,14 @@ import {
   Pressable,
   ActivityIndicator,
   ScrollView,
+  Alert,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 
 import { generateDeck, importAnkiDeck } from "../../services/aiDeckService";
 import { useRefocusStore } from "../../store/useRefocusStore";
 import { saveSelectedDeck } from "../../services/deckStorage";
-import { showPaywall } from "../../services/paywallService";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../../services/api";
 import UpgradeButton from "../../components/UpgradeButton";
 import { refreshUserContext } from "../../services/contextService";
@@ -48,6 +49,8 @@ export default function DecksScreen() {
 
   const displayDeckCount = Math.max(usageDecks, actualDeckCount);
   const displayCardCount = Math.max(usageCards, totalCardsAcrossDecks);
+
+  const isPaidUser = plan !== null && plan !== "free";
 
   const shouldShowAdsUpgrade =
     plan === "free" &&
@@ -124,6 +127,38 @@ export default function DecksScreen() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleDeleteDeck(deckId: string, deckName: string) {
+    Alert.alert(
+      "Delete Deck",
+      `Delete "${deckName}"? This will permanently remove the deck and all its cards.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              setStatus("Deleting deck...");
+              await api.delete(`/decks/${deckId}`);
+              if (selectedDeckId === deckId) {
+                setSelectedDeck(null);
+                await AsyncStorage.removeItem("selectedDeckId");
+              }
+              await Promise.all([loadDecks(), refreshUserContext()]);
+              setStatus("✅ Deck deleted");
+            } catch (err) {
+              console.error(err);
+              setStatus("❌ Failed to delete deck");
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
   }
 
   async function handleUpload() {
@@ -413,38 +448,67 @@ Examples:
             deck.count ??
             0;
 
+          const isSelected = selectedDeckId === deck._id;
+
           return (
-            <Pressable
+            <View
               key={deck._id}
-              onPress={() => selectDeck(deck._id)}
               style={{
-                backgroundColor:
-                  selectedDeckId === deck._id ? "#D86732" : "#1b2540",
-                padding: 14,
+                flexDirection: "row",
+                backgroundColor: isSelected ? "#D86732" : "#1b2540",
                 borderRadius: 12,
                 marginTop: 10,
+                overflow: "hidden",
               }}
             >
-              <Text
-                style={{
-                  color: selectedDeckId === deck._id ? "#111" : "#fff",
-                  fontWeight: "700",
-                  fontSize: 15,
-                }}
+              <Pressable
+                onPress={() => selectDeck(deck._id)}
+                style={{ flex: 1, padding: 14 }}
               >
-                {deck.name}
-              </Text>
+                <Text
+                  style={{
+                    color: isSelected ? "#111" : "#fff",
+                    fontWeight: "700",
+                    fontSize: 15,
+                  }}
+                >
+                  {deck.name}
+                </Text>
+                <Text
+                  style={{
+                    color: isSelected ? "#2a2a2a" : "#A9BDDB",
+                    marginTop: 6,
+                    fontSize: 12,
+                  }}
+                >
+                  {deckCardCount} cards
+                </Text>
+              </Pressable>
 
-              <Text
-                style={{
-                  color: selectedDeckId === deck._id ? "#2a2a2a" : "#A9BDDB",
-                  marginTop: 6,
-                  fontSize: 12,
-                }}
-              >
-                {deckCardCount} cards
-              </Text>
-            </Pressable>
+              {isPaidUser && (
+                <Pressable
+                  onPress={() => handleDeleteDeck(deck._id, deck.name)}
+                  style={{
+                    justifyContent: "center",
+                    alignItems: "center",
+                    paddingHorizontal: 16,
+                    borderLeftWidth: 1,
+                    borderLeftColor: isSelected
+                      ? "rgba(0,0,0,0.15)"
+                      : "rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: isSelected ? "#5a1a1a" : "#e05252",
+                      fontSize: 18,
+                    }}
+                  >
+                    🗑
+                  </Text>
+                </Pressable>
+              )}
+            </View>
           );
         })
       )}
