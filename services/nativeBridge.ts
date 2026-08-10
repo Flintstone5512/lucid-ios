@@ -68,50 +68,40 @@ export async function scheduleUnlockWindow(expiresAt: number) {
 
 export async function startMonitoringBlockedApps() {
   if (Platform.OS !== "ios") return { ok: true };
-
-  // Only schedule if there is no existing pending notification.
-  // This prevents the timer from resetting every time the app opens.
-  // Force-reschedule happens via scheduleThresholdNotification(), which is
-  // called explicitly after session completion and on settings save.
-  try {
-    const pending = await Notifications.getAllScheduledNotificationsAsync();
-    const alreadyScheduled = pending.some((n) => n.identifier === "lucid-threshold");
-    if (!alreadyScheduled) {
-      await scheduleThresholdNotification();
-    }
-  } catch {}
-
   return ScreenTime.startMonitoringBlockedApps();
 }
 
-export async function scheduleThresholdNotification() {
+export async function scheduleUnlockExpiryNotification(expiresAtMs: number) {
   if (Platform.OS !== "ios") return;
   try {
-    const stored = await AsyncStorage.getItem("blockIntervalMinutes");
-    const minutes = stored ? parseInt(stored, 10) : 30;
-    if (minutes > 0) {
-      await Notifications.cancelScheduledNotificationAsync("lucid-threshold").catch(() => {});
-      await Notifications.scheduleNotificationAsync({
-        identifier: "lucid-threshold",
-        content: {
-          title: "Time's up 🧠",
-          body: "Complete a quick study session to unlock your apps.",
-          sound: true,
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: minutes * 60,
-          repeats: false,
-        },
-      });
-    }
-  } catch {}
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== "granted") return;
+
+    await Notifications.cancelScheduledNotificationAsync("lucid-threshold").catch(() => {});
+
+    const secondsUntilExpiry = Math.round((expiresAtMs - Date.now()) / 1000);
+    if (secondsUntilExpiry <= 0) return;
+
+    await Notifications.scheduleNotificationAsync({
+      identifier: "lucid-threshold",
+      content: {
+        title: "Time's up 🧠",
+        body: "Complete a quick study session to unlock your apps.",
+        sound: true,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: new Date(expiresAtMs),
+      },
+    });
+  } catch (e) {
+    console.error("[NOTIF] scheduleUnlockExpiryNotification failed:", e);
+  }
 }
 
 export async function setDailyLimit(minutes: number) {
   if (Platform.OS !== "ios") return { ok: true };
   await AsyncStorage.setItem("blockIntervalMinutes", String(minutes));
-  await scheduleThresholdNotification(); // force-reschedule with new interval
   return ScreenTime.setDailyLimit(minutes);
 }
 
@@ -279,10 +269,11 @@ export async function grantNativeUnlock(expiresAtIso: string) {
     return grantAndroidUnlock(expiresAtIso);
   } else if (Platform.OS === "ios") {
     const result = await scheduleUnlockWindow(epochMs);
-    // Restart DeviceActivity monitoring so the usage counter resets to zero,
-    // and force-reschedule the notification for the next interval.
+    // Reset the DeviceActivity usage counter for the next interval.
     startMonitoringBlockedApps().catch(() => {});
-    scheduleThresholdNotification().catch(() => {});
+    // Schedule notification to fire exactly when the unlock window expires —
+    // that's the moment the user needs to come back and do flashcards.
+    scheduleUnlockExpiryNotification(epochMs).catch(() => {});
     return result;
   }
   return { ok: false };

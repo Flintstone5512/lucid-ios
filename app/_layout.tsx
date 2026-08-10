@@ -16,6 +16,17 @@ import { useRefocusStore } from "../store/useRefocusStore";
 import { ensurePermissions } from "../utils/ensurePermissions";
 
 import * as Notifications from "expo-notifications";
+
+// Required by expo-notifications — without this, scheduled notifications
+// are silently suppressed even when permissions are granted.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 import {
   applyShield,
   getIOSAuthorizationStatus,
