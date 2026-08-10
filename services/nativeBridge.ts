@@ -66,9 +66,9 @@ export async function scheduleUnlockWindow(expiresAt: number) {
   return ScreenTime.unlockForMinutes(minutes);
 }
 
-export async function startMonitoringBlockedApps() {
+export async function startMonitoringBlockedApps(overrideLimitMinutes = 0) {
   if (Platform.OS !== "ios") return { ok: true };
-  return ScreenTime.startMonitoringBlockedApps();
+  return ScreenTime.startMonitoringBlockedApps(overrideLimitMinutes);
 }
 
 export async function scheduleUnlockExpiryNotification(expiresAtMs: number) {
@@ -269,11 +269,13 @@ export async function grantNativeUnlock(expiresAtIso: string) {
     return grantAndroidUnlock(expiresAtIso);
   } else if (Platform.OS === "ios") {
     const result = await scheduleUnlockWindow(epochMs);
-    // Reset the DeviceActivity usage counter for the next interval.
-    startMonitoringBlockedApps().catch(() => {});
-    // Schedule notification to fire exactly when the unlock window expires —
-    // that's the moment the user needs to come back and do flashcards.
-    scheduleUnlockExpiryNotification(epochMs).catch(() => {});
+    // Start a new DeviceActivity window using the unlock duration as the threshold.
+    // When the user consumes that many minutes of Instagram time, the monitor extension
+    // fires, re-applies the shield, and sends the notification — no separate clock-based
+    // notification needed. This is the reliable re-shielding path that doesn't require
+    // the user to manually open Lucid.
+    const unlockMinutes = Math.max(1, Math.round((epochMs - Date.now()) / 60000));
+    startMonitoringBlockedApps(unlockMinutes).catch(() => {});
     return result;
   }
   return { ok: false };

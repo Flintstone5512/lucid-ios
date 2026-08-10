@@ -95,15 +95,21 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         content.title = "Time's up 🧠"
         content.body = "Complete a quick study session to unlock your apps."
         content.sound = .default
-        if #available(iOS 15.0, *) {
-            content.interruptionLevel = .timeSensitive
-        }
+        // Do NOT set interruptionLevel — .timeSensitive requires a separate Apple
+        // entitlement and causes the request to be silently rejected without it.
 
         let request = UNNotificationRequest(
             identifier: "lucid-session-threshold",
             content: content,
             trigger: nil // deliver immediately
         )
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                // Persist the error so it can be read from the main app for debugging.
+                UserDefaults(suiteName: self.appGroupSuite)?.set(
+                    error.localizedDescription, forKey: "lastNotifError"
+                )
+            }
+        }
     }
 }

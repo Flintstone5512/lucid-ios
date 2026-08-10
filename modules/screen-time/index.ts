@@ -58,9 +58,9 @@ export async function checkAndClearPendingSession(): Promise<{ ok: boolean; pend
   return ScreenTimeModule.checkAndClearPendingSession();
 }
 
-export async function startMonitoringBlockedApps(): Promise<{ ok: boolean; error?: string }> {
+export async function startMonitoringBlockedApps(overrideLimitMinutes = 0): Promise<{ ok: boolean; error?: string }> {
   if (!ScreenTimeModule) return { ok: false, error: "ScreenTimeModule not available" };
-  return ScreenTimeModule.startMonitoringBlockedApps();
+  return ScreenTimeModule.startMonitoringBlockedApps(overrideLimitMinutes);
 }
 
 export async function setDailyLimit(minutes: number): Promise<{ ok: boolean }> {

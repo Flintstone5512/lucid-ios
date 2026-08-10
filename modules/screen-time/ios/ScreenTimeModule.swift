@@ -202,7 +202,11 @@ public class ScreenTimeModule: Module {
     // within the interval, eventDidReachThreshold fires in the monitor extension
     // which shields the apps and sends the study-session notification.
     // The interval spans midnight-to-midnight so the counter resets each day.
-    AsyncFunction("startMonitoringBlockedApps") { () -> [String: Any] in
+    // overrideLimitMinutes: when > 0, uses this value instead of the stored block interval.
+    // Pass the unlock duration here after a session so the next threshold fires when
+    // the user has consumed that many minutes of their unlock credit, not the original
+    // block interval. Pass 0 (or omit) to use the stored dailyLimitMinutes.
+    AsyncFunction("startMonitoringBlockedApps") { (overrideLimitMinutes: Int) -> [String: Any] in
       if #available(iOS 16, *) {
         let center = DeviceActivityCenter()
         center.stopMonitoring([.daily])
@@ -227,7 +231,7 @@ public class ScreenTimeModule: Module {
                 ?? UserDefaults.standard.data(forKey: "selectedAppsData")
 
         let stored = self.sharedDefaults?.integer(forKey: "dailyLimitMinutes") ?? 0
-        let limitMinutes = stored > 0 ? stored : 30
+        let limitMinutes = overrideLimitMinutes > 0 ? overrideLimitMinutes : (stored > 0 ? stored : 30)
 
         var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
 
