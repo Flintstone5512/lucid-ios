@@ -274,15 +274,18 @@ export async function grantNativeUnlock(expiresAtIso: string) {
     return grantAndroidUnlock(expiresAtIso);
   } else if (Platform.OS === "ios") {
     const result = await scheduleUnlockWindow(epochMs);
-    // Start a new DeviceActivity window using the unlock duration as the threshold.
-    // When the user consumes that many minutes of Instagram time, the monitor extension
-    // fires, re-applies the shield, and sends the notification — no separate clock-based
-    // notification needed. This is the reliable re-shielding path that doesn't require
-    // the user to manually open Lucid.
-    const unlockMinutes = Math.max(1, Math.round((epochMs - Date.now()) / 60000));
-    startMonitoringBlockedApps(unlockMinutes).catch(() => {});
-    // Pre-schedule the next block notification from JS (reliable fallback to extension).
-    scheduleBlockNotification(unlockMinutes).catch(() => {});
+    // Restart DeviceActivity with the ORIGINAL block interval (not the unlock
+    // duration). Using unlockMinutes as the threshold (build 41) caused the
+    // extension to not fire until the user had that many minutes of usage —
+    // if unlock = 30 min, the JS notification fired at 30 min clock time but
+    // the shield never re-engaged because usage hadn't reached 30 min yet.
+    startMonitoringBlockedApps().catch(() => {});
+    // Pre-schedule the re-block notification for the original block interval
+    // so it fires roughly when DeviceActivity threshold will be hit.
+    AsyncStorage.getItem("blockIntervalMinutes").then((stored) => {
+      const limitMinutes = parseInt(stored || "30", 10);
+      if (limitMinutes > 0) scheduleBlockNotification(limitMinutes).catch(() => {});
+    }).catch(() => {});
     return result;
   }
   return { ok: false };
