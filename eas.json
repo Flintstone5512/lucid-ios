@@ -40,7 +40,8 @@
     },
     "production": {
       "ios": {
-        "appleId": "getsolomoney@gmail.com"
+        "appleId": "getsolomoney@gmail.com",
+        "ascAppId": "6785974487"
       }
     }
   }
