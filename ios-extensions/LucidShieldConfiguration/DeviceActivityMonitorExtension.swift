@@ -25,19 +25,49 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         _ event: DeviceActivityEvent.Name,
         activity: DeviceActivityName
     ) {
-        // User has hit their usage limit — shield them and prompt the study session.
-        applyShield()
+        // Usage limit hit — clear any active unlock window so forceApplyShield
+        // overrides it, then prompt the study session.
+        let defaults = UserDefaults(suiteName: appGroupSuite)
+        defaults?.removeObject(forKey: "unlockUntil")
+        defaults?.synchronize()
+
+        forceApplyShield()
         triggerStudySession()
     }
 
     // MARK: - Shield
 
+    // Respects the unlock window — used by intervalDidStart (schedule reset).
     private func applyShield() {
+        guard let defaults = UserDefaults(suiteName: appGroupSuite) else { return }
+
+        // Don't re-shield if the user is in an active unlock window.
+        let unlockUntil = defaults.double(forKey: "unlockUntil")
+        if Date().timeIntervalSince1970 * 1000 < unlockUntil { return }
+
+        guard let data = defaults.data(forKey: "selectedAppsData"),
+              let selection = try? PropertyListDecoder().decode(
+                  FamilyActivitySelection.self, from: data
+              ) else { return }
+
+        let tokens = selection.applicationTokens
+        if !tokens.isEmpty {
+            store.shield.applications = tokens
+        }
+        let categoryTokens = selection.categoryTokens
+        if !categoryTokens.isEmpty {
+            store.shield.applicationCategories = .specific(categoryTokens)
+        }
+    }
+
+    // Ignores unlock window — used by eventDidReachThreshold to override
+    // an active unlock when the usage limit is hit.
+    private func forceApplyShield() {
         guard let defaults = UserDefaults(suiteName: appGroupSuite),
-              let data = defaults.data(forKey: "selectedAppsData") else { return }
-        guard let selection = try? PropertyListDecoder().decode(
-            FamilyActivitySelection.self, from: data
-        ) else { return }
+              let data = defaults.data(forKey: "selectedAppsData"),
+              let selection = try? PropertyListDecoder().decode(
+                  FamilyActivitySelection.self, from: data
+              ) else { return }
 
         let tokens = selection.applicationTokens
         if !tokens.isEmpty {
