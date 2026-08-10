@@ -22,6 +22,8 @@ import * as Notifications from "expo-notifications";
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
@@ -33,7 +35,6 @@ import {
   getIOSShieldStatus,
   grantAndroidUnlock,
   hideBlockingOverlay,
-  startMonitoringBlockedApps,
 } from "../services/nativeBridge";
 import { checkAndClearPendingSession } from "../modules/screen-time";
 
@@ -209,10 +210,12 @@ async function handleDeepLink(url: string) {
       try {
         const authStatus = await getIOSAuthorizationStatus();
         if (authStatus?.status === "approved") {
-          // Request notification permission so DeviceActivityMonitor can
-          // deliver the "Time's up" alert when the usage threshold is hit.
           Notifications.requestPermissionsAsync().catch(() => {});
-          startMonitoringBlockedApps().catch(() => {});
+          // Do NOT call startMonitoringBlockedApps() here. DeviceActivity
+          // schedules persist across launches — calling stop+start on every
+          // cold open resets the usage counter, desynchronizing the
+          // pre-scheduled JS notification from the actual threshold event.
+          // Monitoring is only started from settings save and after sessions.
           applyShield().catch(() => {});
         } else {
           router.replace("/screens/IOSScreenTimeSetupScreen");
