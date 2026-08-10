@@ -1,6 +1,58 @@
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Audio, Video, ResizeMode } from "expo-av";
+
+type MediaRef = { type: "image" | "audio" | "video"; url: string };
+
+function CardContent({
+  text,
+  media,
+  textStyle,
+  onPlayAudio,
+  isPlayingAudio,
+}: {
+  text: string;
+  media?: MediaRef[];
+  textStyle: any;
+  onPlayAudio: (url: string) => void;
+  isPlayingAudio: boolean;
+}) {
+  const images = media?.filter((m) => m.type === "image") ?? [];
+  const audios = media?.filter((m) => m.type === "audio") ?? [];
+  const videos = media?.filter((m) => m.type === "video") ?? [];
+
+  return (
+    <View>
+      {images.map((m, i) => (
+        <Image
+          key={i}
+          source={{ uri: m.url }}
+          style={styles.cardImage}
+          resizeMode="contain"
+        />
+      ))}
+      {videos.map((m, i) => (
+        <Video
+          key={i}
+          source={{ uri: m.url }}
+          style={styles.cardVideo}
+          useNativeControls
+          resizeMode={ResizeMode.CONTAIN}
+          shouldPlay={false}
+        />
+      ))}
+      {!!text && <Text style={textStyle}>{text}</Text>}
+      {audios.map((m, i) => (
+        <Pressable key={i} onPress={() => onPlayAudio(m.url)} style={styles.audioBtn}>
+          <Text style={styles.audioBtnText}>
+            {isPlayingAudio ? "⏸ Playing…" : "▶ Play Audio"}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
 
 import { showRewardedAd } from "../services/adService";
 import api from "../services/api";
@@ -26,6 +78,8 @@ export default function SessionScreen() {
 
   const [startTime, setStartTime] = useState<number>(Date.now());
   const [loading, setLoading] = useState(true);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const soundRef = useRef<Audio.Sound | null>(null);
 
   const [noCardsMode, setNoCardsMode] = useState(false);
   const [noCardsGraceUntil, setNoCardsGraceUntil] = useState<string | null>(
@@ -102,7 +156,43 @@ export default function SessionScreen() {
 
   useEffect(() => {
     setStartTime(Date.now());
+    setIsPlayingAudio(false);
+    if (soundRef.current) {
+      soundRef.current.unloadAsync();
+      soundRef.current = null;
+    }
   }, [index]);
+
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    };
+  }, []);
+
+  async function playAudio(url: string) {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+      const { sound } = await Audio.Sound.createAsync({ uri: url });
+      soundRef.current = sound;
+      setIsPlayingAudio(true);
+      await sound.playAsync();
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setIsPlayingAudio(false);
+        }
+      });
+    } catch (err) {
+      console.error("[SESSION] audio playback failed", err);
+      setIsPlayingAudio(false);
+    }
+  }
 
   useEffect(() => {
     if (!completed) return;
@@ -431,14 +521,14 @@ export default function SessionScreen() {
       </View>
 
       <View style={styles.centerSection}>
-        <Text style={styles.cardFront}>{card.front}</Text>
+        <CardContent text={card.front} media={card.frontMedia} textStyle={styles.cardFront} onPlayAudio={playAudio} isPlayingAudio={isPlayingAudio} />
 
         {!!microReward && (
           <Text style={styles.microReward}>{microReward}</Text>
         )}
 
         {showAnswer && (
-          <Text style={styles.cardBack}>{card.back}</Text>
+          <CardContent text={card.back} media={card.backMedia} textStyle={styles.cardBack} onPlayAudio={playAudio} isPlayingAudio={isPlayingAudio} />
         )}
       </View>
 
@@ -570,6 +660,35 @@ const styles = StyleSheet.create({
     color: "#D86732",
     marginTop: 10,
     fontSize: 18,
+  },
+
+  cardImage: {
+    width: "100%",
+    height: 200,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+
+  cardVideo: {
+    width: "100%",
+    height: 220,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+
+  audioBtn: {
+    marginTop: 14,
+    backgroundColor: "#1e2d45",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    alignSelf: "center",
+  },
+
+  audioBtnText: {
+    color: "#6EADEB",
+    fontSize: 16,
+    fontWeight: "600",
   },
 
   secondaryBtn: {
