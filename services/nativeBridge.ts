@@ -71,31 +71,36 @@ export async function startMonitoringBlockedApps(overrideLimitMinutes = 0) {
   return ScreenTime.startMonitoringBlockedApps(overrideLimitMinutes);
 }
 
-export async function scheduleUnlockExpiryNotification(expiresAtMs: number) {
+// Pre-schedule the "scroll limit reached" notification from the JS layer.
+// The DeviceActivityMonitor extension also tries to send one when the threshold
+// fires, but extension UNUserNotificationCenter calls can be silently dropped.
+// This JS-side version is reliable and fires at roughly the right clock time.
+// Cancel + reschedule whenever monitoring restarts so it stays in sync.
+export async function scheduleBlockNotification(inMinutes: number) {
   if (Platform.OS !== "ios") return;
   try {
     const { status } = await Notifications.getPermissionsAsync();
     if (status !== "granted") return;
 
-    await Notifications.cancelScheduledNotificationAsync("lucid-threshold").catch(() => {});
+    await Notifications.cancelScheduledNotificationAsync("lucid-block-upcoming").catch(() => {});
 
-    const secondsUntilExpiry = Math.round((expiresAtMs - Date.now()) / 1000);
-    if (secondsUntilExpiry <= 0) return;
+    const secondsUntil = Math.round(inMinutes * 60);
+    if (secondsUntil <= 0) return;
 
     await Notifications.scheduleNotificationAsync({
-      identifier: "lucid-threshold",
+      identifier: "lucid-block-upcoming",
       content: {
-        title: "Time's up 🧠",
-        body: "Complete a quick study session to unlock your apps.",
+        title: "Scroll limit reached 🧠",
+        body: "Open Lucid to complete a quick study session and unlock your apps.",
         sound: true,
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: new Date(expiresAtMs),
+        date: new Date(Date.now() + secondsUntil * 1000),
       },
     });
   } catch (e) {
-    console.error("[NOTIF] scheduleUnlockExpiryNotification failed:", e);
+    console.error("[NOTIF] scheduleBlockNotification failed:", e);
   }
 }
 
@@ -276,6 +281,8 @@ export async function grantNativeUnlock(expiresAtIso: string) {
     // the user to manually open Lucid.
     const unlockMinutes = Math.max(1, Math.round((epochMs - Date.now()) / 60000));
     startMonitoringBlockedApps(unlockMinutes).catch(() => {});
+    // Pre-schedule the next block notification from JS (reliable fallback to extension).
+    scheduleBlockNotification(unlockMinutes).catch(() => {});
     return result;
   }
   return { ok: false };

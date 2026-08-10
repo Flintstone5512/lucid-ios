@@ -93,7 +93,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         // they were scrolling and can tap straight into the session screen.
         let content = UNMutableNotificationContent()
         content.title = "Time's up 🧠"
-        content.body = "Complete a quick study session to unlock your apps."
+        content.body = "Open Lucid to complete a quick study session and unlock your apps."
         content.sound = .default
         // Do NOT set interruptionLevel — .timeSensitive requires a separate Apple
         // entitlement and causes the request to be silently rejected without it.

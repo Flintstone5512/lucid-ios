@@ -142,12 +142,12 @@ export default function SessionScreen() {
         return;
       }
 
+      // Don't auto-navigate — let the completion screen show so the user can
+      // press Home and return to Instagram without landing on the Lucid dashboard.
       await reopenBlockedApp();
-      router.replace("/(tabs)");
     } catch (err: any) {
       console.error("[SESSION] handleSessionEnd FAILED:", err?.message, err?.response?.status);
       await reopenBlockedApp();
-      router.replace("/(tabs)");
     }
   }
 
@@ -383,15 +383,24 @@ export default function SessionScreen() {
 
     return (
       <View style={styles.center}>
-        <Text style={{ fontSize: 40 }}>🔥</Text>
+        <Text style={{ fontSize: 44 }}>🔓</Text>
 
-        <Text style={styles.rewardTitle}>
-          You earned {minutes} minutes
-        </Text>
+        <Text style={styles.rewardTitle}>Apps Unlocked!</Text>
 
         <Text style={styles.rewardSub}>
-          Most people scroll.{"\n"}You progressed.
+          You earned {minutes} minutes.{"\n"}Most people scroll. You progressed.
         </Text>
+
+        <Text style={[styles.rewardSub, { marginTop: 24, color: "#6b7a99" }]}>
+          Press the Home button to return to your app.
+        </Text>
+
+        <Pressable
+          onPress={() => router.replace("/(tabs)")}
+          style={[styles.secondaryBtn, { marginTop: 32 }]}
+        >
+          <Text style={styles.secondaryBtnText}>Go to Dashboard</Text>
+        </Pressable>
       </View>
     );
   }

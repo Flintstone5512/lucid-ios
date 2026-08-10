@@ -19,7 +19,7 @@ import { clearAuthToken } from "../../services/api";
 import { syncEnforcementSettings } from "../../services/nativeBridge";
 import { syncEnforcementDecision } from "../../services/enforcementSync";
 import { syncSettings as syncScreenTimeSettings, applyShield, clearShield, setDailyLimit } from "../../modules/screen-time";
-import { startMonitoringBlockedApps } from "../../services/nativeBridge";
+import { startMonitoringBlockedApps, scheduleBlockNotification } from "../../services/nativeBridge";
 import { Platform } from "react-native";
 
 export default function SettingsScreen() {
@@ -92,6 +92,7 @@ export default function SettingsScreen() {
         if (limitMinutes > 0) {
           setDailyLimit(limitMinutes)
             .then(() => startMonitoringBlockedApps())
+            .then(() => scheduleBlockNotification(limitMinutes))
             .catch(() => {});
         }
       }
