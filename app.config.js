@@ -17,7 +17,7 @@ export default {
 
     ios: {
       bundleIdentifier: "com.yourapp.scrolltax",
-      buildNumber: "44",
+      buildNumber: "45",
       deploymentTarget: "16.4",
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
