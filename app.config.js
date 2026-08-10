@@ -4,6 +4,7 @@ export default {
     slug: "scroll-tax",
     scheme: "scroll-tax",
     owner: "principledwarrior",
+    icon: "./assets/icon.png",
 
     extra: {
       eas: {
