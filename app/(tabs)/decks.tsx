@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  Modal,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 
@@ -51,6 +52,14 @@ export default function DecksScreen() {
   const displayCardCount = Math.max(usageCards, totalCardsAcrossDecks);
 
   const isPaidUser = plan !== null && plan !== "free";
+
+  const [editingDeck, setEditingDeck] = useState<any>(null);
+  const [deckCards, setDeckCards] = useState<any[]>([]);
+  const [cardsLoading, setCardsLoading] = useState(false);
+  const [newCardFront, setNewCardFront] = useState("");
+  const [newCardBack, setNewCardBack] = useState("");
+  const [addingCard, setAddingCard] = useState(false);
+  const [cardStatus, setCardStatus] = useState("");
 
   const shouldShowAdsUpgrade =
     plan === "free" &&
@@ -189,6 +198,65 @@ export default function DecksScreen() {
       setStatus("❌ Upload failed");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function openEditDeck(deck: any) {
+    setEditingDeck(deck);
+    setDeckCards([]);
+    setCardStatus("");
+    setNewCardFront("");
+    setNewCardBack("");
+    setCardsLoading(true);
+    try {
+      const res = await api.get(`/cards/${deck._id}`);
+      setDeckCards(res.data.cards || []);
+    } catch (err) {
+      console.error("Failed to load cards", err);
+      setCardStatus("❌ Failed to load cards");
+    } finally {
+      setCardsLoading(false);
+    }
+  }
+
+  function closeEditDeck() {
+    setEditingDeck(null);
+    setDeckCards([]);
+    setNewCardFront("");
+    setNewCardBack("");
+    setCardStatus("");
+  }
+
+  async function handleAddCard() {
+    if (!newCardFront.trim() || !newCardBack.trim()) return;
+    setAddingCard(true);
+    setCardStatus("");
+    try {
+      const res = await api.post("/cards", {
+        deckId: editingDeck._id,
+        front: newCardFront.trim(),
+        back: newCardBack.trim(),
+      });
+      setDeckCards((prev) => [...prev, res.data.card]);
+      setNewCardFront("");
+      setNewCardBack("");
+      setCardStatus("✅ Card added");
+      setDecks((prev) =>
+        prev.map((d) =>
+          d._id === editingDeck._id
+            ? { ...d, cardCount: (d.cardCount ?? 0) + 1 }
+            : d
+        )
+      );
+      await refreshUserContext();
+    } catch (err: any) {
+      if (err?.response?.data?.upgradeRequired) {
+        setCardStatus("⚠️ Card limit reached — upgrade to add more");
+      } else {
+        setCardStatus("❌ Failed to add card");
+      }
+    } finally {
+      setAddingCard(false);
     }
   }
 
@@ -485,13 +553,35 @@ Examples:
                 </Text>
               </Pressable>
 
+              <Pressable
+                onPress={() => openEditDeck(deck)}
+                style={{
+                  justifyContent: "center",
+                  alignItems: "center",
+                  paddingHorizontal: 14,
+                  borderLeftWidth: 1,
+                  borderLeftColor: isSelected
+                    ? "rgba(0,0,0,0.15)"
+                    : "rgba(255,255,255,0.06)",
+                }}
+              >
+                <Text
+                  style={{
+                    color: isSelected ? "#2a2a2a" : "#A9BDDB",
+                    fontSize: 16,
+                  }}
+                >
+                  ✏️
+                </Text>
+              </Pressable>
+
               {isPaidUser && (
                 <Pressable
                   onPress={() => handleDeleteDeck(deck._id, deck.name)}
                   style={{
                     justifyContent: "center",
                     alignItems: "center",
-                    paddingHorizontal: 16,
+                    paddingHorizontal: 14,
                     borderLeftWidth: 1,
                     borderLeftColor: isSelected
                       ? "rgba(0,0,0,0.15)"
@@ -521,6 +611,202 @@ Examples:
           {status}
         </Text>
       )}
+
+      {/* EDIT DECK MODAL */}
+      <Modal
+        visible={!!editingDeck}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeEditDeck}
+      >
+        <View style={{ flex: 1, backgroundColor: "#0e1424" }}>
+          {/* Header */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              padding: 20,
+              paddingTop: 56,
+              borderBottomWidth: 1,
+              borderBottomColor: "rgba(169,189,219,0.1)",
+            }}
+          >
+            <Text
+              style={{
+                flex: 1,
+                color: "white",
+                fontSize: 20,
+                fontWeight: "800",
+              }}
+              numberOfLines={1}
+            >
+              {editingDeck?.name}
+            </Text>
+            <Pressable onPress={closeEditDeck} style={{ paddingLeft: 16 }}>
+              <Text style={{ color: "#A9BDDB", fontSize: 16, fontWeight: "600" }}>
+                Done
+              </Text>
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
+            {/* Card count summary */}
+            <Text style={{ color: "#A9BDDB", fontSize: 13, marginBottom: 16 }}>
+              {deckCards.length} card{deckCards.length !== 1 ? "s" : ""} in this deck
+              {"  •  "}
+              {displayCardCount} / {maxCards} total used
+            </Text>
+
+            {/* Existing cards */}
+            {cardsLoading ? (
+              <ActivityIndicator style={{ marginVertical: 20 }} />
+            ) : deckCards.length === 0 ? (
+              <View
+                style={{
+                  backgroundColor: "#161b22",
+                  borderRadius: 10,
+                  padding: 14,
+                  borderWidth: 1,
+                  borderColor: "#2a2e36",
+                }}
+              >
+                <Text style={{ color: "#777" }}>
+                  No cards yet. Add one below.
+                </Text>
+              </View>
+            ) : (
+              deckCards.map((card: any, i: number) => (
+                <View
+                  key={card._id ?? i}
+                  style={{
+                    backgroundColor: "#161b22",
+                    borderRadius: 10,
+                    padding: 14,
+                    marginBottom: 8,
+                    borderWidth: 1,
+                    borderColor: "#2a2e36",
+                  }}
+                >
+                  <Text style={{ color: "white", fontWeight: "700" }}>
+                    {card.front}
+                  </Text>
+                  <Text style={{ color: "#A9BDDB", marginTop: 4, fontSize: 13 }}>
+                    {card.back}
+                  </Text>
+                </View>
+              ))
+            )}
+
+            {/* Add card section */}
+            <Text
+              style={{
+                color: "#D86732",
+                fontWeight: "700",
+                marginTop: 28,
+                marginBottom: 12,
+              }}
+            >
+              Add a Card
+            </Text>
+
+            {displayCardCount >= maxCards ? (
+              <View
+                style={{
+                  backgroundColor: "#161b22",
+                  borderRadius: 12,
+                  padding: 16,
+                  borderWidth: 1,
+                  borderColor: "rgba(216,103,50,0.3)",
+                }}
+              >
+                <Text style={{ color: "white", fontWeight: "700", fontSize: 15 }}>
+                  Card limit reached
+                </Text>
+                <Text style={{ color: "#A9BDDB", marginTop: 6, lineHeight: 20 }}>
+                  You've used {displayCardCount} of {maxCards} cards.{" "}
+                  {plan === "free" && adMode !== "ad_supported"
+                    ? "Enable ads or upgrade to add more."
+                    : "Upgrade your plan to add more."}
+                </Text>
+                <View style={{ marginTop: 14 }}>
+                  <UpgradeButton label="Upgrade for More Cards" />
+                </View>
+              </View>
+            ) : (
+              <>
+                <TextInput
+                  value={newCardFront}
+                  onChangeText={setNewCardFront}
+                  placeholder="Front (question or term)"
+                  placeholderTextColor="#555"
+                  style={{
+                    backgroundColor: "#161b22",
+                    color: "white",
+                    borderRadius: 10,
+                    padding: 14,
+                    borderWidth: 1,
+                    borderColor: "#2a2e36",
+                    marginBottom: 10,
+                  }}
+                />
+                <TextInput
+                  value={newCardBack}
+                  onChangeText={setNewCardBack}
+                  placeholder="Back (answer or definition)"
+                  placeholderTextColor="#555"
+                  multiline
+                  textAlignVertical="top"
+                  style={{
+                    backgroundColor: "#161b22",
+                    color: "white",
+                    borderRadius: 10,
+                    padding: 14,
+                    borderWidth: 1,
+                    borderColor: "#2a2e36",
+                    marginBottom: 14,
+                    minHeight: 80,
+                  }}
+                />
+                <Pressable
+                  onPress={handleAddCard}
+                  disabled={
+                    addingCard ||
+                    !newCardFront.trim() ||
+                    !newCardBack.trim()
+                  }
+                  style={{
+                    backgroundColor: "#D86732",
+                    padding: 16,
+                    borderRadius: 12,
+                    opacity:
+                      !newCardFront.trim() || !newCardBack.trim() ? 0.5 : 1,
+                  }}
+                >
+                  {addingCard ? (
+                    <ActivityIndicator color="#111" />
+                  ) : (
+                    <Text
+                      style={{
+                        color: "#111",
+                        textAlign: "center",
+                        fontWeight: "800",
+                      }}
+                    >
+                      Add Card
+                    </Text>
+                  )}
+                </Pressable>
+              </>
+            )}
+
+            {!!cardStatus && (
+              <Text style={{ color: "#A9BDDB", marginTop: 14 }}>
+                {cardStatus}
+              </Text>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
