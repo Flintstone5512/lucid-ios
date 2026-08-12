@@ -40,6 +40,7 @@ function CardContent({
           useNativeControls
           resizeMode={ResizeMode.CONTAIN}
           shouldPlay={false}
+          onError={(err) => console.error("[SESSION] video error", err)}
         />
       ))}
       {!!text && <Text style={textStyle}>{text}</Text>}
@@ -216,14 +217,22 @@ export default function SessionScreen() {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
-      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-      const { sound } = await Audio.Sound.createAsync({ uri: url });
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        allowsRecordingIOS: false,
+        staysActiveInBackground: false,
+      });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: url },
+        { shouldPlay: true }   // start playback immediately once loaded
+      );
       soundRef.current = sound;
       setIsPlayingAudio(true);
-      await sound.playAsync();
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
           setIsPlayingAudio(false);
+          sound.unloadAsync();
+          soundRef.current = null;
         }
       });
     } catch (err) {

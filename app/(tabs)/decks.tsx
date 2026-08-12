@@ -208,8 +208,11 @@ export default function DecksScreen() {
     }, 0);
   }, [decks]);
 
-  const displayDeckCount = Math.max(usageDecks, actualDeckCount);
-  const displayCardCount = Math.max(usageCards, totalCardsAcrossDecks);
+  // Use live counts so the UI updates immediately after deck deletion
+  const displayDeckCount = actualDeckCount;
+  const displayCardCount = totalCardsAcrossDecks;
+
+  const formatLimit = (n: number) => n >= 999000 ? "Unlimited" : String(n);
 
   const isPaidUser = plan !== null && plan !== "free";
 
@@ -550,7 +553,7 @@ export default function DecksScreen() {
           >
             <Text style={{ color: "#A9BDDB", fontSize: 12 }}>Decks</Text>
             <Text style={{ color: "white", fontSize: 22, fontWeight: "800", marginTop: 4 }}>
-              {displayDeckCount} / {maxDecks}
+              {displayDeckCount} / {formatLimit(maxDecks)}
             </Text>
           </View>
 
@@ -564,7 +567,7 @@ export default function DecksScreen() {
           >
             <Text style={{ color: "#A9BDDB", fontSize: 12 }}>Cards</Text>
             <Text style={{ color: "white", fontSize: 22, fontWeight: "800", marginTop: 4 }}>
-              {displayCardCount} / {maxCards}
+              {displayCardCount} / {formatLimit(maxCards)}
             </Text>
           </View>
         </View>
@@ -1090,7 +1093,7 @@ Examples:
             <Text style={{ color: "#A9BDDB", fontSize: 13, marginBottom: 16 }}>
               {deckCards.length} card{deckCards.length !== 1 ? "s" : ""} in this deck
               {"  •  "}
-              {displayCardCount} / {maxCards} total used
+              {displayCardCount} / {formatLimit(maxCards)} total used
             </Text>
 
             {/* Existing cards */}
@@ -1145,7 +1148,7 @@ Examples:
               Add a Card
             </Text>
 
-            {displayCardCount >= maxCards ? (
+            {maxCards < 999000 && displayCardCount >= maxCards ? (
               <View
                 style={{
                   backgroundColor: "#161b22",
@@ -1159,7 +1162,7 @@ Examples:
                   Card limit reached
                 </Text>
                 <Text style={{ color: "#A9BDDB", marginTop: 6, lineHeight: 20 }}>
-                  You've used {displayCardCount} of {maxCards} cards.{" "}
+                  You've used {displayCardCount} of {formatLimit(maxCards)} cards.{" "}
                   {plan === "free" && adMode !== "ad_supported"
                     ? "Enable ads or upgrade to add more."
                     : "Upgrade your plan to add more."}
