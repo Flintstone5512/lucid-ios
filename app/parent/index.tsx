@@ -31,11 +31,14 @@ import { useRefocusStore } from "../../store/useRefocusStore";
 import UpgradeButton from "../../components/UpgradeButton";
 import MetricCard from "../../components/MetricCard";
 import { LucidTheme } from "../../constants/lucidTheme";
-import { applyShield, clearShield, getShieldStatus, presentAppPicker } from "../../modules/screen-time";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { applyShield, clearShield, hasSelection } from "../../modules/screen-time";
 import {
   setAndroidParentSelfBlocking,
   getAndroidParentSelfBlockingStatus,
 } from "../../services/nativeBridge";
+
+const SELF_BLOCK_KEY = "parentSelfBlockingEnabled";
 import { router, useFocusEffect } from "expo-router";
 
 export default function ParentDashboard() {
@@ -59,8 +62,11 @@ export default function ParentDashboard() {
   useFocusEffect(
     useCallback(() => {
       if (Platform.OS === "ios") {
-        getShieldStatus().then((res) => {
-          setSelfBlocking(!!res.isShielded);
+        // Read the stored preference, not the live shield state.
+        // The shield may be temporarily cleared during an unlock window after a
+        // session — that doesn't mean the user disabled self-blocking.
+        AsyncStorage.getItem(SELF_BLOCK_KEY).then((val) => {
+          setSelfBlocking(val === "true");
         }).catch(() => {});
       } else if (Platform.OS === "android") {
         getAndroidParentSelfBlockingStatus().then((res) => {
@@ -107,14 +113,22 @@ export default function ParentDashboard() {
       setSelfBlockLoading(true);
       if (selfBlocking) {
         await clearShield();
+        await AsyncStorage.setItem(SELF_BLOCK_KEY, "false");
         setSelfBlocking(false);
       } else {
-        await applyShield();
-        const res = await getShieldStatus().catch(() => null);
-        if (res?.isShielded) {
+        // Check whether the user has ever selected apps to block.
+        // Don't use getShieldStatus() here — the shield may be temporarily
+        // cleared during an unlock window even when apps are selected, which
+        // would give a false "no selection" result and send the user to setup.
+        const selRes = await hasSelection().catch(() => null);
+        if (selRes?.hasSelection) {
+          await AsyncStorage.setItem(SELF_BLOCK_KEY, "true");
+          // applyShield() skips silently when an unlock window is active — that
+          // is fine; it will reapply on the next foreground once the window expires.
+          await applyShield().catch(() => {});
           setSelfBlocking(true);
         } else {
-          // No selection yet — send to setup screen
+          // No apps selected yet — send to setup so the user can pick them.
           router.push("/screens/IOSScreenTimeSetupScreen");
         }
       }

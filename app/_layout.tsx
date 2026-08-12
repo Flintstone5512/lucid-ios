@@ -301,15 +301,40 @@ async function handleDeepLink(url: string) {
   }, []);
 
   /* =========================
+     🔔 NOTIFICATION FOREGROUND (threshold fires while app is open)
+  ========================= */
+
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+
+    // When the threshold fires while Lucid is already foregrounded, AppState
+    // stays "active" so the AppState listener never re-fires. This listener
+    // catches the notification delivery itself and navigates to /session.
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
+      if (notification.request.identifier === "lucid-session-threshold") {
+        checkAndClearPendingSession()
+          .then((result) => {
+            if (result?.pending) {
+              setTimeout(() => router.replace("/session"), 120);
+            }
+          })
+          .catch(() => {});
+      }
+    });
+
+    return () => sub.remove();
+  }, []);
+
+  /* =========================
      🔔 NOTIFICATION TAP
   ========================= */
 
   useEffect(() => {
     if (Platform.OS !== "ios") return;
 
-    // Handles the case where the app is already foregrounded when the user
-    // taps the "Time's up" notification — AppState won't fire in that case,
-    // so this listener is the only path that catches the tap.
+    // Handles the case where the user taps the "Time's up" notification banner
+    // to open Lucid — addNotificationReceivedListener above handles the case
+    // where the app is already foregrounded when the threshold fires.
     const sub = Notifications.addNotificationResponseReceivedListener(() => {
       checkAndClearPendingSession()
         .then((result) => {
