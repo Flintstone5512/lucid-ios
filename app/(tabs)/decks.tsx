@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 
-import { generateDeck, importAnkiDeck, previewAnkiDeck, CardType, AnkiPreview } from "../../services/aiDeckService";
+import { generateDeck, importAnkiDeck, previewAnkiDeck, remapDeckFields, CardType, AnkiPreview } from "../../services/aiDeckService";
 import { useRefocusStore } from "../../store/useRefocusStore";
 import {
   saveSelectedDeck,
@@ -25,6 +25,150 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../../services/api";
 import UpgradeButton from "../../components/UpgradeButton";
 import { refreshUserContext } from "../../services/contextService";
+
+/* ─────────────────────────────────────────────
+   Shared Anki field-mapping modal component
+───────────────────────────────────────────── */
+function AnkiFieldModal({
+  title, subtitle, fields, sample,
+  frontIndices, backIndices, audioIndex,
+  onFrontToggle, onBackToggle, onAudioToggle,
+  onConfirm, confirmLabel, onCancel,
+}: {
+  title: string; subtitle: string;
+  fields: string[];
+  sample: { name: string; value: string }[];
+  frontIndices: number[]; backIndices: number[]; audioIndex: number | null;
+  onFrontToggle: (i: number) => void;
+  onBackToggle:  (i: number) => void;
+  onAudioToggle: (i: number) => void;
+  onConfirm: () => void; confirmLabel: string; onCancel: () => void;
+}) {
+  const frontPreview = frontIndices.map((i) => sample[i]?.value).filter(Boolean).join(" · ");
+  const backPreview  = backIndices.map((i) => sample[i]?.value).filter(Boolean).join("\n");
+
+  return (
+    <View style={{ flex: 1, backgroundColor: "#0e1424" }}>
+      <View style={{ padding: 20, paddingTop: 56, borderBottomWidth: 1, borderBottomColor: "rgba(169,189,219,0.1)" }}>
+        <Text style={{ color: "white", fontSize: 20, fontWeight: "800" }}>{title}</Text>
+        {!!subtitle && <Text style={{ color: "#A9BDDB", marginTop: 4, fontSize: 13 }}>{subtitle}</Text>}
+      </View>
+
+      <ScrollView style={{ flex: 1, padding: 20 }}>
+        <Text style={{ color: "#A9BDDB", fontSize: 13, marginBottom: 16, lineHeight: 18 }}>
+          Select one or more fields per side. Multiple fields are joined together on the card.
+        </Text>
+
+        {/* FRONT — multi-select */}
+        <Text style={{ color: "#D86732", fontWeight: "700", marginBottom: 8 }}>Front of Card</Text>
+        {fields.map((name, i) => {
+          const selected = frontIndices.includes(i);
+          return (
+            <Pressable key={`f${i}`} onPress={() => onFrontToggle(i)} style={{
+              flexDirection: "row", alignItems: "flex-start",
+              backgroundColor: selected ? "rgba(216,103,50,0.15)" : "#161b22",
+              borderWidth: 1, borderColor: selected ? "#D86732" : "#2a2e36",
+              borderRadius: 10, padding: 12, marginBottom: 8,
+            }}>
+              <View style={{
+                width: 18, height: 18, borderRadius: 3, borderWidth: 2,
+                borderColor: selected ? "#D86732" : "#555",
+                backgroundColor: selected ? "#D86732" : "transparent",
+                marginRight: 10, marginTop: 1, alignItems: "center", justifyContent: "center",
+              }}>
+                {selected && <Text style={{ color: "#111", fontSize: 11, fontWeight: "900" }}>✓</Text>}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: selected ? "#D86732" : "white", fontWeight: "700", fontSize: 13 }}>{name}</Text>
+                {sample[i]?.value ? <Text style={{ color: "#A9BDDB", fontSize: 12, marginTop: 2 }} numberOfLines={2}>{sample[i].value}</Text> : null}
+              </View>
+            </Pressable>
+          );
+        })}
+
+        {/* BACK — multi-select */}
+        <Text style={{ color: "#6EADEB", fontWeight: "700", marginTop: 16, marginBottom: 8 }}>Back of Card</Text>
+        {fields.map((name, i) => {
+          const selected = backIndices.includes(i);
+          return (
+            <Pressable key={`b${i}`} onPress={() => onBackToggle(i)} style={{
+              flexDirection: "row", alignItems: "flex-start",
+              backgroundColor: selected ? "rgba(110,173,235,0.15)" : "#161b22",
+              borderWidth: 1, borderColor: selected ? "#6EADEB" : "#2a2e36",
+              borderRadius: 10, padding: 12, marginBottom: 8,
+            }}>
+              <View style={{
+                width: 18, height: 18, borderRadius: 3, borderWidth: 2,
+                borderColor: selected ? "#6EADEB" : "#555",
+                backgroundColor: selected ? "#6EADEB" : "transparent",
+                marginRight: 10, marginTop: 1, alignItems: "center", justifyContent: "center",
+              }}>
+                {selected && <Text style={{ color: "#111", fontSize: 11, fontWeight: "900" }}>✓</Text>}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: selected ? "#6EADEB" : "white", fontWeight: "700", fontSize: 13 }}>{name}</Text>
+                {sample[i]?.value ? <Text style={{ color: "#A9BDDB", fontSize: 12, marginTop: 2 }} numberOfLines={2}>{sample[i].value}</Text> : null}
+              </View>
+            </Pressable>
+          );
+        })}
+
+        {/* AUDIO — optional single pick */}
+        <Text style={{ color: "#A9BDDB", fontWeight: "700", marginTop: 16, marginBottom: 4 }}>Audio Field <Text style={{ fontWeight: "400", fontSize: 12 }}>(optional)</Text></Text>
+        <Text style={{ color: "#555", fontSize: 12, marginBottom: 8 }}>Pick the field containing [sound:…] tags. Plays on the front of each card.</Text>
+        {fields.map((name, i) => {
+          const selected = audioIndex === i;
+          return (
+            <Pressable key={`a${i}`} onPress={() => onAudioToggle(i)} style={{
+              flexDirection: "row", alignItems: "center",
+              backgroundColor: selected ? "rgba(80,200,120,0.12)" : "#161b22",
+              borderWidth: 1, borderColor: selected ? "#50c878" : "#2a2e36",
+              borderRadius: 10, padding: 12, marginBottom: 6,
+            }}>
+              <View style={{
+                width: 18, height: 18, borderRadius: 9, borderWidth: 2,
+                borderColor: selected ? "#50c878" : "#555",
+                backgroundColor: selected ? "#50c878" : "transparent",
+                marginRight: 10,
+              }} />
+              <Text style={{ color: selected ? "#50c878" : "#A9BDDB", fontWeight: selected ? "700" : "400", fontSize: 13 }}>{name}</Text>
+            </Pressable>
+          );
+        })}
+
+        {/* Live preview */}
+        {sample.length > 0 && (frontIndices.length > 0 || backIndices.length > 0) && (
+          <View style={{ marginTop: 24, backgroundColor: "#161b22", borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#2a2e36" }}>
+            <Text style={{ color: "#D86732", fontWeight: "700", fontSize: 11, marginBottom: 10, letterSpacing: 1 }}>PREVIEW</Text>
+            <Text style={{ color: "#888", fontSize: 11, marginBottom: 4 }}>FRONT</Text>
+            <Text style={{ color: "white", fontSize: 14, marginBottom: 12 }} numberOfLines={4}>{frontPreview || "—"}</Text>
+            <View style={{ height: 1, backgroundColor: "#2a2e36", marginBottom: 12 }} />
+            <Text style={{ color: "#888", fontSize: 11, marginBottom: 4 }}>BACK</Text>
+            <Text style={{ color: "white", fontSize: 14 }} numberOfLines={6}>{backPreview || "—"}</Text>
+          </View>
+        )}
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+
+      <View style={{ padding: 20, gap: 10 }}>
+        <Pressable
+          onPress={onConfirm}
+          disabled={frontIndices.length === 0 || backIndices.length === 0}
+          style={{
+            backgroundColor: frontIndices.length > 0 && backIndices.length > 0 ? "#D86732" : "#2a2e36",
+            padding: 16, borderRadius: 14, alignItems: "center",
+          }}
+        >
+          <Text style={{ color: frontIndices.length > 0 && backIndices.length > 0 ? "#111" : "#555", fontWeight: "800", fontSize: 16 }}>{confirmLabel}</Text>
+        </Pressable>
+        <Pressable onPress={onCancel} style={{ padding: 14, alignItems: "center" }}>
+          <Text style={{ color: "#A9BDDB", fontWeight: "600" }}>Cancel</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 export default function DecksScreen() {
   const [prompt, setPrompt] = useState("");
@@ -69,13 +213,21 @@ export default function DecksScreen() {
 
   const isPaidUser = plan !== null && plan !== "free";
 
-  // Anki field-mapping modal state
+  // Anki field-mapping modal state (import)
   const [pendingFile, setPendingFile] = useState<any>(null);
   const [ankiPreview, setAnkiPreview] = useState<AnkiPreview | null>(null);
-  const [frontFieldIndex, setFrontFieldIndex] = useState(0);
-  const [backFieldIndex, setBackFieldIndex] = useState(1);
+  const [frontFieldIndices, setFrontFieldIndices] = useState<number[]>([0]);
+  const [backFieldIndices, setBackFieldIndices] = useState<number[]>([1]);
+  const [audioFieldIndex, setAudioFieldIndex] = useState<number | null>(null);
   const [fieldModalVisible, setFieldModalVisible] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+
+  // Remap modal state (paid users, existing anki decks)
+  const [remapDeck, setRemapDeck] = useState<any>(null);
+  const [remapFront, setRemapFront] = useState<number[]>([0]);
+  const [remapBack, setRemapBack] = useState<number[]>([1]);
+  const [remapAudio, setRemapAudio] = useState<number | null>(null);
+  const [remapLoading, setRemapLoading] = useState(false);
 
   const [editingDeck, setEditingDeck] = useState<any>(null);
   const [deckCards, setDeckCards] = useState<any[]>([]);
@@ -238,8 +390,9 @@ export default function DecksScreen() {
       const fields = preview.modelSchemas?.[0]?.fields ?? [];
       setPendingFile(file);
       setAnkiPreview(preview);
-      setFrontFieldIndex(0);
-      setBackFieldIndex(Math.min(1, fields.length - 1));
+      setFrontFieldIndices([0]);
+      setBackFieldIndices([Math.min(1, fields.length - 1)]);
+      setAudioFieldIndex(null);
       setFieldModalVisible(true);
       setStatus("");
     } catch (err) {
@@ -257,7 +410,7 @@ export default function DecksScreen() {
     setStatus("Importing...");
 
     try {
-      await importAnkiDeck(pendingFile, frontFieldIndex, backFieldIndex);
+      await importAnkiDeck(pendingFile, frontFieldIndices, backFieldIndices, audioFieldIndex);
       await refreshUserContext();
       await loadDecks();
       setStatus("✅ Deck imported");
@@ -269,6 +422,32 @@ export default function DecksScreen() {
       setPendingFile(null);
       setAnkiPreview(null);
     }
+  }
+
+  function openRemapModal(deck: any) {
+    setRemapDeck(deck);
+    setRemapFront(deck.frontFieldIndices ?? [0]);
+    setRemapBack(deck.backFieldIndices ?? [1]);
+    setRemapAudio(deck.audioFieldIndex ?? null);
+  }
+
+  async function handleConfirmRemap() {
+    if (!remapDeck) return;
+    setRemapLoading(true);
+    try {
+      await remapDeckFields(remapDeck._id, remapFront, remapBack, remapAudio);
+      setRemapDeck(null);
+      setStatus("✅ Fields remapped");
+    } catch (err) {
+      console.error(err);
+      setStatus("❌ Remap failed");
+    } finally {
+      setRemapLoading(false);
+    }
+  }
+
+  function toggleIndex(arr: number[], idx: number): number[] {
+    return arr.includes(idx) ? arr.filter((i) => i !== idx) : [...arr, idx];
   }
 
   async function openEditDeck(deck: any) {
@@ -767,6 +946,23 @@ Examples:
                 </Text>
               </Pressable>
 
+              {isPaidUser && deck.sourceType === "anki_import" && deck.fieldSchema?.length > 0 && (
+                <Pressable
+                  onPress={() => openRemapModal(deck)}
+                  style={{
+                    justifyContent: "center",
+                    alignItems: "center",
+                    paddingHorizontal: 12,
+                    borderLeftWidth: 1,
+                    borderLeftColor: isSingleSelected
+                      ? "rgba(0,0,0,0.15)"
+                      : "rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <Text style={{ color: isSingleSelected ? "#2a2a2a" : "#6EADEB", fontSize: 15 }}>⇄</Text>
+                </Pressable>
+              )}
+
               {isPaidUser && (
                 <Pressable
                   onPress={() => handleDeleteDeck(deck._id, deck.name)}
@@ -804,135 +1000,52 @@ Examples:
         </Text>
       )}
 
-      {/* FIELD MAPPING MODAL */}
+      {/* FIELD MAPPING MODAL (import) */}
       <Modal
         visible={fieldModalVisible}
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={() => { setFieldModalVisible(false); setPendingFile(null); setAnkiPreview(null); }}
       >
-        <View style={{ flex: 1, backgroundColor: "#0e1424" }}>
-          <View style={{ padding: 20, paddingTop: 56, borderBottomWidth: 1, borderBottomColor: "rgba(169,189,219,0.1)" }}>
-            <Text style={{ color: "white", fontSize: 20, fontWeight: "800" }}>Map Card Fields</Text>
-            {ankiPreview && (
-              <Text style={{ color: "#A9BDDB", marginTop: 4, fontSize: 13 }}>
-                {ankiPreview.deckName} · {ankiPreview.totalNotes} cards
-              </Text>
-            )}
-          </View>
+        <AnkiFieldModal
+          title="Map Card Fields"
+          subtitle={ankiPreview ? `${ankiPreview.deckName} · ${ankiPreview.totalNotes} notes` : ""}
+          fields={ankiPreview?.modelSchemas?.[0]?.fields ?? []}
+          sample={ankiPreview?.samples?.[0] ?? []}
+          frontIndices={frontFieldIndices}
+          backIndices={backFieldIndices}
+          audioIndex={audioFieldIndex}
+          onFrontToggle={(i) => setFrontFieldIndices(toggleIndex(frontFieldIndices, i))}
+          onBackToggle={(i) => setBackFieldIndices(toggleIndex(backFieldIndices, i))}
+          onAudioToggle={(i) => setAudioFieldIndex(audioFieldIndex === i ? null : i)}
+          onConfirm={handleConfirmImport}
+          confirmLabel="Import Deck"
+          onCancel={() => { setFieldModalVisible(false); setPendingFile(null); setAnkiPreview(null); }}
+        />
+      </Modal>
 
-          <ScrollView style={{ flex: 1, padding: 20 }}>
-            {ankiPreview && (() => {
-              const fields = ankiPreview.modelSchemas?.[0]?.fields ?? [];
-              const sample = ankiPreview.samples?.[0] ?? [];
-
-              return (
-                <>
-                  <Text style={{ color: "#A9BDDB", fontSize: 13, marginBottom: 16, lineHeight: 18 }}>
-                    Choose which field from the Anki deck maps to the front and back of each card.
-                  </Text>
-
-                  {/* Front field selector */}
-                  <Text style={{ color: "#D86732", fontWeight: "700", marginBottom: 8 }}>Front of Card</Text>
-                  {fields.map((fieldName, i) => (
-                    <Pressable
-                      key={`front-${i}`}
-                      onPress={() => setFrontFieldIndex(i)}
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "flex-start",
-                        backgroundColor: frontFieldIndex === i ? "rgba(216,103,50,0.15)" : "#161b22",
-                        borderWidth: 1,
-                        borderColor: frontFieldIndex === i ? "#D86732" : "#2a2e36",
-                        borderRadius: 10,
-                        padding: 12,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <View style={{
-                        width: 18, height: 18, borderRadius: 9, borderWidth: 2,
-                        borderColor: frontFieldIndex === i ? "#D86732" : "#555",
-                        backgroundColor: frontFieldIndex === i ? "#D86732" : "transparent",
-                        marginRight: 10, marginTop: 1,
-                      }} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: frontFieldIndex === i ? "#D86732" : "white", fontWeight: "700", fontSize: 13 }}>{fieldName}</Text>
-                        {sample[i]?.value ? (
-                          <Text style={{ color: "#A9BDDB", fontSize: 12, marginTop: 3 }} numberOfLines={2}>{sample[i].value}</Text>
-                        ) : null}
-                      </View>
-                    </Pressable>
-                  ))}
-
-                  {/* Back field selector */}
-                  <Text style={{ color: "#6EADEB", fontWeight: "700", marginTop: 16, marginBottom: 8 }}>Back of Card</Text>
-                  {fields.map((fieldName, i) => (
-                    <Pressable
-                      key={`back-${i}`}
-                      onPress={() => setBackFieldIndex(i)}
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "flex-start",
-                        backgroundColor: backFieldIndex === i ? "rgba(110,173,235,0.15)" : "#161b22",
-                        borderWidth: 1,
-                        borderColor: backFieldIndex === i ? "#6EADEB" : "#2a2e36",
-                        borderRadius: 10,
-                        padding: 12,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <View style={{
-                        width: 18, height: 18, borderRadius: 9, borderWidth: 2,
-                        borderColor: backFieldIndex === i ? "#6EADEB" : "#555",
-                        backgroundColor: backFieldIndex === i ? "#6EADEB" : "transparent",
-                        marginRight: 10, marginTop: 1,
-                      }} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: backFieldIndex === i ? "#6EADEB" : "white", fontWeight: "700", fontSize: 13 }}>{fieldName}</Text>
-                        {sample[i]?.value ? (
-                          <Text style={{ color: "#A9BDDB", fontSize: 12, marginTop: 3 }} numberOfLines={2}>{sample[i].value}</Text>
-                        ) : null}
-                      </View>
-                    </Pressable>
-                  ))}
-
-                  {/* Preview */}
-                  {sample.length > 0 && (
-                    <View style={{ marginTop: 24, backgroundColor: "#161b22", borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#2a2e36" }}>
-                      <Text style={{ color: "#D86732", fontWeight: "700", fontSize: 12, marginBottom: 8 }}>PREVIEW</Text>
-                      <Text style={{ color: "#888", fontSize: 11, marginBottom: 4 }}>FRONT</Text>
-                      <Text style={{ color: "white", fontSize: 14, marginBottom: 12 }} numberOfLines={3}>
-                        {sample[frontFieldIndex]?.value || "—"}
-                      </Text>
-                      <View style={{ height: 1, backgroundColor: "#2a2e36", marginBottom: 12 }} />
-                      <Text style={{ color: "#888", fontSize: 11, marginBottom: 4 }}>BACK</Text>
-                      <Text style={{ color: "white", fontSize: 14 }} numberOfLines={3}>
-                        {sample[backFieldIndex]?.value || "—"}
-                      </Text>
-                    </View>
-                  )}
-
-                  <View style={{ height: 40 }} />
-                </>
-              );
-            })()}
-          </ScrollView>
-
-          <View style={{ padding: 20, gap: 10 }}>
-            <Pressable
-              onPress={handleConfirmImport}
-              style={{ backgroundColor: "#D86732", padding: 16, borderRadius: 14, alignItems: "center" }}
-            >
-              <Text style={{ color: "#111", fontWeight: "800", fontSize: 16 }}>Import Deck</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => { setFieldModalVisible(false); setPendingFile(null); setAnkiPreview(null); }}
-              style={{ padding: 14, alignItems: "center" }}
-            >
-              <Text style={{ color: "#A9BDDB", fontWeight: "600" }}>Cancel</Text>
-            </Pressable>
-          </View>
-        </View>
+      {/* REMAP FIELDS MODAL (paid users, existing anki decks) */}
+      <Modal
+        visible={!!remapDeck}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setRemapDeck(null)}
+      >
+        <AnkiFieldModal
+          title="Change Field Mapping"
+          subtitle={remapDeck?.name ?? ""}
+          fields={remapDeck?.fieldSchema ?? []}
+          sample={[]}
+          frontIndices={remapFront}
+          backIndices={remapBack}
+          audioIndex={remapAudio}
+          onFrontToggle={(i) => setRemapFront(toggleIndex(remapFront, i))}
+          onBackToggle={(i) => setRemapBack(toggleIndex(remapBack, i))}
+          onAudioToggle={(i) => setRemapAudio(remapAudio === i ? null : i)}
+          onConfirm={handleConfirmRemap}
+          confirmLabel={remapLoading ? "Remapping..." : "Apply Changes"}
+          onCancel={() => setRemapDeck(null)}
+        />
       </Modal>
 
       {/* EDIT DECK MODAL */}

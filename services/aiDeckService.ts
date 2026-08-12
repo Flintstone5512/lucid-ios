@@ -60,8 +60,9 @@ export async function previewAnkiDeck(file: {
 
 export async function importAnkiDeck(
   file: { uri: string; name: string; mimeType?: string },
-  frontFieldIndex = 0,
-  backFieldIndex = 1,
+  frontFieldIndices: number[] = [0],
+  backFieldIndices: number[]  = [1],
+  audioFieldIndex: number | null = null,
 ) {
   const form = new FormData();
 
@@ -71,13 +72,30 @@ export async function importAnkiDeck(
     type: file.mimeType || "application/octet-stream",
   } as any);
 
-  form.append("frontFieldIndex", String(frontFieldIndex));
-  form.append("backFieldIndex", String(backFieldIndex));
+  form.append("frontFieldIndices", JSON.stringify(frontFieldIndices));
+  form.append("backFieldIndices",  JSON.stringify(backFieldIndices));
+  if (audioFieldIndex != null) {
+    form.append("audioFieldIndex", String(audioFieldIndex));
+  }
 
   const res = await api.post("/import/apkg", form, {
     headers: { "Content-Type": "multipart/form-data" },
     timeout: 90000,
   });
 
+  return res.data;
+}
+
+export async function remapDeckFields(
+  deckId: string,
+  frontFieldIndices: number[],
+  backFieldIndices: number[],
+  audioFieldIndex: number | null,
+) {
+  const res = await api.patch(`/decks/${deckId}/remap-fields`, {
+    frontFieldIndices,
+    backFieldIndices,
+    audioFieldIndex,
+  });
   return res.data;
 }
