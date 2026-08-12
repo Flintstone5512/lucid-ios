@@ -4,10 +4,13 @@ import api from "./api";
    🔥 AI GENERATE (TEXT → DECK)
 ========================= */
 
-export async function generateDeck(prompt: string) {
+export type CardType = "basic" | "multiple_choice" | "cloze" | "mixed";
+
+export async function generateDeck(prompt: string, cardType: CardType = "basic") {
   const form = new FormData();
   form.append("type", "text");
   form.append("prompt", prompt);
+  form.append("cardType", cardType);
 
   const res = await api.post("/ai-deck", form, {
     headers: { "Content-Type": "multipart/form-data" },
@@ -15,6 +18,11 @@ export async function generateDeck(prompt: string) {
   });
 
   return res.data;
+}
+
+export async function askAITutor(front: string, back: string): Promise<string> {
+  const res = await api.post("/ai-tutor/explain", { front, back });
+  return res.data.explanation;
 }
 
 /* =========================
@@ -38,6 +46,7 @@ export async function importAnkiDeck(file: {
     headers: {
       "Content-Type": "multipart/form-data",
     },
+    timeout: 90000,
   });
 
   return res.data;
