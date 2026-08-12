@@ -8,6 +8,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { OnboardingProvider } from "../context/OnboardingContext";
 import {
   bootstrapAuthToken,
+  registerPushToken,
   requestUnlock,
 } from "../services/api";
 import { refreshUserContext } from "../services/contextService";
@@ -120,10 +121,8 @@ async function handleDeepLink(url: string) {
 
     async function init() {
       try {
-        if (!__DEV__) {
-          const mobileAds = require("react-native-google-mobile-ads").default;
-          await mobileAds().initialize();
-        }
+        const mobileAds = require("react-native-google-mobile-ads").default;
+        await mobileAds().initialize();
 
         // 🔥 STEP 0: check deep link FIRST (before anything else)
         const initialUrl = await ExpoLinking.getInitialURL();
@@ -158,6 +157,18 @@ async function handleDeepLink(url: string) {
               await refreshUserContext();
             } catch (err) {
               console.log("⚠️ Context failed:", err);
+            }
+
+            // Register push token with backend (iOS only — Android handled natively)
+            if (Platform.OS === "ios") {
+              try {
+                const { data: pushToken } = await Notifications.getExpoPushTokenAsync({
+                  projectId: "ffef0193-896d-42c0-a995-5cec0cc5e73b",
+                });
+                await registerPushToken(pushToken);
+              } catch (err) {
+                console.log("Push token registration failed:", err);
+              }
             }
           }
 

@@ -44,6 +44,13 @@ export default {
       "expo-dev-client",
 
       [
+        "expo-notifications",
+        {
+          iosDisplayInForeground: true
+        }
+      ],
+
+      [
         "expo-build-properties",
         {
           ios: {

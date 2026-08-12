@@ -1,38 +1,24 @@
 // src/services/adService.js
 
-const isDev = __DEV__;
+const {
+  RewardedAd,
+  RewardedAdEventType,
+  AdEventType,
+} = require("react-native-google-mobile-ads");
 
-/* =========================
-   🔥 DEV MODE (NO IMPORT)
-========================= */
+const { Platform } = require("react-native");
+
+const PROD_IOS_AD_UNIT     = "ca-app-pub-4629047096490080/8803311640";
+const PROD_ANDROID_AD_UNIT = "ca-app-pub-4629047096490080/2812618363";
+
+// Override via EXPO_PUBLIC_ADMOB_IOS_UNIT_ID in .env to use Google's test ID
+// during TestFlight QA: ca-app-pub-3940256099942544/1712485313
+const adUnitId = Platform.select({
+  ios:     process.env.EXPO_PUBLIC_ADMOB_IOS_UNIT_ID     || PROD_IOS_AD_UNIT,
+  android: process.env.EXPO_PUBLIC_ADMOB_ANDROID_AD_UNIT || PROD_ANDROID_AD_UNIT,
+});
+
 export function showRewardedAd(onRewardEarned) {
-  if (isDev) {
-    console.log("[DEV] Simulating rewarded ad...");
-
-    setTimeout(() => {
-      console.log("[DEV] Reward granted");
-      if (onRewardEarned) onRewardEarned();
-    }, 500);
-
-    return;
-  }
-
-  /* =========================
-     🔥 PRODUCTION ONLY IMPORT
-  ========================= */
-
-  const { Platform } = require("react-native");
-  const {
-    RewardedAd,
-    RewardedAdEventType,
-    AdEventType,
-  } = require("react-native-google-mobile-ads");
-
-  const adUnitId = Platform.select({
-    android: "ca-app-pub-4629047096490080/2812618363",
-    ios: "ca-app-pub-4629047096490080/8803311640",
-  });
-
   const rewarded = RewardedAd.createForAdRequest(adUnitId, {
     requestNonPersonalizedAdsOnly: true,
   });
@@ -61,7 +47,6 @@ export function showRewardedAd(onRewardEarned) {
     }
   );
 
-  // AdEventType.CLOSED (not RewardedAdEventType) — rewarded ads inherit base events
   closedListener = rewarded.addAdEventListener(
     AdEventType.CLOSED,
     () => cleanup()
