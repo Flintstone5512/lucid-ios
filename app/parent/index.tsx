@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   ScrollView,
   View,
   Text,
@@ -8,6 +9,16 @@ import {
   StyleSheet,
   Platform,
 } from "react-native";
+
+function timeAgoLabel(dateStr: string | null): string {
+  if (!dateStr) return "never";
+  const ms = Date.now() - new Date(dateStr).getTime();
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  if (hours < 1) return "less than an hour ago";
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 import {
   getParentDashboard,
@@ -35,6 +46,7 @@ export default function ParentDashboard() {
   const [selfBlockLoading, setSelfBlockLoading] = useState(false);
 
   const { context, limits } = useRefocusStore();
+  const alertedRef = useRef(false);
 
   const children = context?.account?.children || [];
   const maxChildren = limits?.maxChildren ?? 0;
@@ -62,6 +74,19 @@ export default function ParentDashboard() {
     try {
       const res = await getParentDashboard();
       setData(res);
+
+      if (!alertedRef.current) {
+        const inactive = (res.children || []).filter((c: any) => c.isAppActive === false);
+        if (inactive.length > 0) {
+          alertedRef.current = true;
+          const names = inactive.map((c: any) => c.name || "Unnamed").join(", ");
+          Alert.alert(
+            "App May Have Been Uninstalled",
+            `${names} hasn't opened Lucid in over 24 hours. They may have removed the app from their device.`,
+            [{ text: "OK" }]
+          );
+        }
+      }
     } catch (err) {
       console.log("Parent dashboard error:", err);
     }
@@ -340,6 +365,15 @@ function ChildCard({ child, reload }: any) {
     <View style={styles.childCard}>
       <Text style={styles.childName}>{child.name || "Unnamed Child"}</Text>
 
+      {child.isAppActive === false && (
+        <View style={styles.uninstalledBanner}>
+          <Text style={styles.uninstalledTitle}>⚠️ App Not Detected</Text>
+          <Text style={styles.uninstalledBody}>
+            Last seen {timeAgoLabel(child.lastSeen)} — app may have been uninstalled.
+          </Text>
+        </View>
+      )}
+
       <Text style={styles.meta}>
         🔥 Streak: {child.streak?.currentStreak || 0}
       </Text>
@@ -584,5 +618,28 @@ const styles = StyleSheet.create({
     color: "white",
     textAlign: "center",
     fontWeight: "700",
+  },
+
+  uninstalledBanner: {
+    backgroundColor: "#3b0d0d",
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 8,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: "#ef4444",
+  },
+
+  uninstalledTitle: {
+    color: "#fca5a5",
+    fontWeight: "800",
+    fontSize: 13,
+    marginBottom: 2,
+  },
+
+  uninstalledBody: {
+    color: "#fca5a5",
+    fontSize: 12,
+    lineHeight: 17,
   },
 });

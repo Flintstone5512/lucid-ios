@@ -1,6 +1,7 @@
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import { Platform } from "react-native";
+import { registerPushToken } from "./api";
 
 export async function registerForPushNotifications() {
   if (!Device.isDevice) return;
@@ -10,6 +11,11 @@ export async function registerForPushNotifications() {
   if (status !== "granted") return;
 
   const token = (await Notifications.getExpoPushTokenAsync()).data;
+
+  // Register with backend so the server can push-notify this device
+  if (token) {
+    await registerPushToken(token);
+  }
 
   return token;
 }

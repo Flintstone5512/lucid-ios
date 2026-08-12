@@ -183,6 +183,22 @@ export async function getAnalyticsDashboard() {
   return res.data;
 }
 
+export async function sendHeartbeat() {
+  try {
+    await api.patch("/me/heartbeat");
+  } catch {
+    // non-critical — swallow silently
+  }
+}
+
+export async function registerPushToken(token: string) {
+  try {
+    await api.post("/me/push-token", { token });
+  } catch {
+    // non-critical — swallow silently
+  }
+}
+
 /* =========================
    🔥 EXPORT
 ========================= */

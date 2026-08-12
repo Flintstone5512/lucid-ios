@@ -13,7 +13,7 @@ import { router } from "expo-router";
 import * as Notifications from "expo-notifications";
 
 import { useRefocusStore } from "../../store/useRefocusStore";
-import { getSharedState } from "../../services/api";
+import { getSharedState, sendHeartbeat } from "../../services/api";
 import MetricCard from "../../components/MetricCard";
 import UpgradeButton from "../../components/UpgradeButton";
 import { LucidTheme } from "../../constants/lucidTheme";
@@ -44,10 +44,14 @@ export default function UserDashboard() {
 
     load();
     checkNotificationPermission();
+    sendHeartbeat();
 
-    // Re-check whenever the user returns from Settings
+    // Re-check whenever the user returns from Settings; send heartbeat on foreground
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") checkNotificationPermission();
+      if (state === "active") {
+        checkNotificationPermission();
+        sendHeartbeat();
+      }
     });
 
     return () => sub.remove();

@@ -19,11 +19,17 @@ type RefocusState = {
   selectedDeckId: string | null;
   enforcementMode: EnforcementMode;
 
+  shuffleMode: boolean;
+  shuffleDeckIds: string[];
+
   setSelectedDeck: (deckId: string) => void;
   setEnforcementMode: (mode: EnforcementMode) => void;
   incrementSessionCount: () => void;
   resetSessionCount: () => void;
   setStatePatch: (patch: Partial<RefocusState>) => void;
+  setShuffleMode: (enabled: boolean) => void;
+  toggleShuffleDeck: (deckId: string) => void;
+  setShuffleDeckIds: (ids: string[]) => void;
 };
 
 export const useRefocusStore = create<RefocusState>((set) => ({
@@ -42,11 +48,27 @@ export const useRefocusStore = create<RefocusState>((set) => ({
   selectedDeckId: null,
   enforcementMode: "soft",
 
+  shuffleMode: false,
+  shuffleDeckIds: [],
+
   setSelectedDeck: (deckId) =>
     set({ selectedDeckId: deckId }),
 
   setEnforcementMode: (mode) =>
     set({ enforcementMode: mode }),
+
+  setShuffleMode: (enabled) =>
+    set({ shuffleMode: enabled }),
+
+  toggleShuffleDeck: (deckId) =>
+    set((state) => ({
+      shuffleDeckIds: state.shuffleDeckIds.includes(deckId)
+        ? state.shuffleDeckIds.filter((id) => id !== deckId)
+        : [...state.shuffleDeckIds, deckId],
+    })),
+
+  setShuffleDeckIds: (ids) =>
+    set({ shuffleDeckIds: ids }),
 
   incrementSessionCount: () =>
     set((state) => ({

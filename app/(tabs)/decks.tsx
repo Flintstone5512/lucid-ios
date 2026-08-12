@@ -8,12 +8,19 @@ import {
   ScrollView,
   Alert,
   Modal,
+  Switch,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 
-import { generateDeck, importAnkiDeck } from "../../services/aiDeckService";
+import { generateDeck, importAnkiDeck, CardType } from "../../services/aiDeckService";
 import { useRefocusStore } from "../../store/useRefocusStore";
-import { saveSelectedDeck } from "../../services/deckStorage";
+import {
+  saveSelectedDeck,
+  saveShuffleMode,
+  loadShuffleMode,
+  saveShuffleDeckIds,
+  loadShuffleDeckIds,
+} from "../../services/deckStorage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../../services/api";
 import UpgradeButton from "../../components/UpgradeButton";
@@ -21,11 +28,20 @@ import { refreshUserContext } from "../../services/contextService";
 
 export default function DecksScreen() {
   const [prompt, setPrompt] = useState("");
+  const [cardType, setCardType] = useState<CardType>("basic");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [decks, setDecks] = useState<any[]>([]);
 
-  const { selectedDeckId, setSelectedDeck } = useRefocusStore();
+  const {
+    selectedDeckId,
+    setSelectedDeck,
+    shuffleMode,
+    shuffleDeckIds,
+    setShuffleMode,
+    toggleShuffleDeck,
+    setShuffleDeckIds,
+  } = useRefocusStore();
   const { plan, adMode, limits, context } = useRefocusStore();
 
   const usageDecks = context?.settings?.usage?.decksCreated ?? context?.usage?.decksCreated ?? 0;
@@ -68,7 +84,14 @@ export default function DecksScreen() {
 
   useEffect(() => {
     loadDecks();
+    loadPersistedShuffleState();
   }, []);
+
+  async function loadPersistedShuffleState() {
+    const [mode, ids] = await Promise.all([loadShuffleMode(), loadShuffleDeckIds()]);
+    setShuffleMode(mode);
+    setShuffleDeckIds(ids);
+  }
 
   async function loadDecks() {
     try {
@@ -89,6 +112,22 @@ export default function DecksScreen() {
       console.error("Failed to save selected deck", err);
       setStatus("❌ Failed to select deck");
     }
+  }
+
+  async function handleShuffleModeToggle(enabled: boolean) {
+    setShuffleMode(enabled);
+    await saveShuffleMode(enabled);
+    if (!enabled) {
+      setStatus("");
+    }
+  }
+
+  async function handleShuffleDeckToggle(deckId: string) {
+    const next = shuffleDeckIds.includes(deckId)
+      ? shuffleDeckIds.filter((id) => id !== deckId)
+      : [...shuffleDeckIds, deckId];
+    setShuffleDeckIds(next);
+    await saveShuffleDeckIds(next);
   }
 
   async function enableAdsMode() {
@@ -124,7 +163,7 @@ export default function DecksScreen() {
     setStatus("Generating...");
 
     try {
-      await generateDeck(prompt.trim());
+      await generateDeck(prompt.trim(), cardType);
       await refreshUserContext();
       await loadDecks();
 
@@ -378,13 +417,59 @@ Examples:
           }}
         />
 
+        {/* CARD TYPE SELECTOR */}
+        <Text style={{ color: "#A9BDDB", fontSize: 12, marginTop: 14, marginBottom: 8 }}>
+          Card Type
+        </Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {(
+            [
+              { key: "basic", label: "Basic" },
+              { key: "multiple_choice", label: "Multiple Choice" },
+              { key: "cloze", label: "Cloze" },
+              { key: "mixed", label: "Mixed" },
+            ] as { key: CardType; label: string }[]
+          ).map(({ key, label }) => {
+            const locked = !isPaidUser && key !== "basic";
+            const selected = cardType === key;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => {
+                  if (locked) {
+                    Alert.alert("Paid Feature", "Upgrade to unlock Multiple Choice, Cloze, and Mixed card types.");
+                    return;
+                  }
+                  setCardType(key);
+                }}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: selected ? "#D86732" : "#2a2e36",
+                  backgroundColor: selected ? "#2a1800" : "#0f172a",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <Text style={{ color: selected ? "#D86732" : locked ? "#555" : "#A9BDDB", fontSize: 13 }}>
+                  {label}
+                </Text>
+                {locked && <Text style={{ fontSize: 11 }}>🔒</Text>}
+              </Pressable>
+            );
+          })}
+        </View>
+
         <Pressable
           onPress={handleGenerate}
           style={{
             backgroundColor: "#D86732",
             padding: 16,
             borderRadius: 14,
-            marginTop: 12,
+            marginTop: 14,
           }}
         >
           <Text style={{ textAlign: "center", fontWeight: "800", color: "#111" }}>
@@ -494,6 +579,43 @@ Examples:
         Your Decks
       </Text>
 
+      {/* SHUFFLE MODE TOGGLE — paid users only */}
+      {isPaidUser && (
+        <View
+          style={{
+            marginTop: 12,
+            backgroundColor: "#161b22",
+            borderWidth: 1,
+            borderColor: shuffleMode
+              ? "rgba(110, 173, 235, 0.35)"
+              : "rgba(169, 189, 219, 0.12)",
+            borderRadius: 14,
+            padding: 14,
+            flexDirection: "row",
+            alignItems: "center",
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: "white", fontWeight: "700", fontSize: 15 }}>
+              Shuffle Mode
+            </Text>
+            <Text style={{ color: "#A9BDDB", fontSize: 12, marginTop: 3 }}>
+              {shuffleMode
+                ? shuffleDeckIds.length === 0
+                  ? "Select decks below to mix into one session"
+                  : `${shuffleDeckIds.length} deck${shuffleDeckIds.length !== 1 ? "s" : ""} selected — cards will shuffle together`
+                : "Mix cards from multiple decks in one session"}
+            </Text>
+          </View>
+          <Switch
+            value={shuffleMode}
+            onValueChange={handleShuffleModeToggle}
+            trackColor={{ false: "#2a2e36", true: "#6EADEB" }}
+            thumbColor={shuffleMode ? "#fff" : "#A9BDDB"}
+          />
+        </View>
+      )}
+
       {decks.length === 0 ? (
         <View
           style={{
@@ -516,41 +638,80 @@ Examples:
             deck.count ??
             0;
 
-          const isSelected = selectedDeckId === deck._id;
+          const isSingleSelected = !shuffleMode && selectedDeckId === deck._id;
+          const isShuffleSelected = shuffleMode && shuffleDeckIds.includes(deck._id);
+          const isActive = isSingleSelected || isShuffleSelected;
+
+          const bgColor = isSingleSelected
+            ? "#D86732"
+            : isShuffleSelected
+            ? "#1a2e4a"
+            : "#1b2540";
+
+          const borderColor = isShuffleSelected
+            ? "rgba(110, 173, 235, 0.5)"
+            : "transparent";
 
           return (
             <View
               key={deck._id}
               style={{
                 flexDirection: "row",
-                backgroundColor: isSelected ? "#D86732" : "#1b2540",
+                backgroundColor: bgColor,
                 borderRadius: 12,
                 marginTop: 10,
                 overflow: "hidden",
+                borderWidth: isShuffleSelected ? 1.5 : 0,
+                borderColor,
               }}
             >
               <Pressable
-                onPress={() => selectDeck(deck._id)}
-                style={{ flex: 1, padding: 14 }}
+                onPress={() =>
+                  shuffleMode
+                    ? handleShuffleDeckToggle(deck._id)
+                    : selectDeck(deck._id)
+                }
+                style={{ flex: 1, padding: 14, flexDirection: "row", alignItems: "center" }}
               >
-                <Text
-                  style={{
-                    color: isSelected ? "#111" : "#fff",
-                    fontWeight: "700",
-                    fontSize: 15,
-                  }}
-                >
-                  {deck.name}
-                </Text>
-                <Text
-                  style={{
-                    color: isSelected ? "#2a2a2a" : "#A9BDDB",
-                    marginTop: 6,
-                    fontSize: 12,
-                  }}
-                >
-                  {deckCardCount} cards
-                </Text>
+                {shuffleMode && (
+                  <View
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 11,
+                      borderWidth: 2,
+                      borderColor: isShuffleSelected ? "#6EADEB" : "#4a5568",
+                      backgroundColor: isShuffleSelected ? "#6EADEB" : "transparent",
+                      marginRight: 12,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {isShuffleSelected && (
+                      <Text style={{ color: "#0e1424", fontSize: 13, fontWeight: "800" }}>✓</Text>
+                    )}
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: isSingleSelected ? "#111" : "#fff",
+                      fontWeight: "700",
+                      fontSize: 15,
+                    }}
+                  >
+                    {deck.name}
+                  </Text>
+                  <Text
+                    style={{
+                      color: isSingleSelected ? "#2a2a2a" : "#A9BDDB",
+                      marginTop: 6,
+                      fontSize: 12,
+                    }}
+                  >
+                    {deckCardCount} cards
+                  </Text>
+                </View>
               </Pressable>
 
               <Pressable
@@ -560,14 +721,14 @@ Examples:
                   alignItems: "center",
                   paddingHorizontal: 14,
                   borderLeftWidth: 1,
-                  borderLeftColor: isSelected
+                  borderLeftColor: isSingleSelected
                     ? "rgba(0,0,0,0.15)"
                     : "rgba(255,255,255,0.06)",
                 }}
               >
                 <Text
                   style={{
-                    color: isSelected ? "#2a2a2a" : "#A9BDDB",
+                    color: isSingleSelected ? "#2a2a2a" : "#A9BDDB",
                     fontSize: 16,
                   }}
                 >
@@ -583,14 +744,14 @@ Examples:
                     alignItems: "center",
                     paddingHorizontal: 14,
                     borderLeftWidth: 1,
-                    borderLeftColor: isSelected
+                    borderLeftColor: isSingleSelected
                       ? "rgba(0,0,0,0.15)"
                       : "rgba(255,255,255,0.06)",
                   }}
                 >
                   <Text
                     style={{
-                      color: isSelected ? "#5a1a1a" : "#e05252",
+                      color: isSingleSelected ? "#5a1a1a" : "#e05252",
                       fontSize: 18,
                     }}
                   >

@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Audio, Video, ResizeMode } from "expo-av";
 
 type MediaRef = { type: "image" | "audio" | "video"; url: string };
@@ -55,6 +55,7 @@ function CardContent({
 }
 
 import { showRewardedAd } from "../services/adService";
+import { askAITutor } from "../services/aiDeckService";
 import api from "../services/api";
 import { syncEnforcementDecision } from "../services/enforcementSync";
 import {
@@ -82,23 +83,45 @@ export default function SessionScreen() {
   const soundRef = useRef<Audio.Sound | null>(null);
 
   const [noCardsMode, setNoCardsMode] = useState(false);
-  const [noCardsGraceUntil, setNoCardsGraceUntil] = useState<string | null>(
-    null
-  );
+  const [noCardsGraceUntil, setNoCardsGraceUntil] = useState<string | null>(null);
 
-  const { selectedDeckId, setStatePatch, streak, usage, unlockedUntil } =
-    useRefocusStore();
+  const [tutorVisible, setTutorVisible] = useState(false);
+  const [tutorLoading, setTutorLoading] = useState(false);
+  const [tutorText, setTutorText] = useState("");
+
+  const {
+    selectedDeckId,
+    setStatePatch,
+    streak,
+    usage,
+    unlockedUntil,
+    shuffleMode,
+    shuffleDeckIds,
+    plan,
+  } = useRefocusStore();
+
+  const isPaidUser = plan !== null && plan !== "free";
 
   useEffect(() => {
     load();
-  }, [selectedDeckId]);
+  }, [selectedDeckId, shuffleMode, shuffleDeckIds]);
 
   useEffect(() => {
   console.log("✅ SESSION SCREEN MOUNTED");
 }, []);
 
+  function fisherYatesShuffle(arr: any[]) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
   async function load() {
-    console.log("[SESSION] load() called — selectedDeckId:", selectedDeckId, "unlockedUntil:", unlockedUntil ? new Date(unlockedUntil).toISOString() : "none");
+    const isShuffling = shuffleMode && shuffleDeckIds.length > 0;
+    console.log("[SESSION] load() called — shuffleMode:", shuffleMode, "shuffleDeckIds:", shuffleDeckIds, "selectedDeckId:", selectedDeckId);
 
     if (unlockedUntil > Date.now()) {
       console.log("[SESSION] Active unlock — returning to tabs");
@@ -106,8 +129,14 @@ export default function SessionScreen() {
       return;
     }
 
-    if (!selectedDeckId) {
+    if (!isShuffling && !selectedDeckId) {
       console.log("[SESSION] No deck selected — showing 'Select a deck first'");
+      setLoading(false);
+      return;
+    }
+
+    if (shuffleMode && shuffleDeckIds.length === 0) {
+      console.log("[SESSION] Shuffle mode on but no decks selected");
       setLoading(false);
       return;
     }
@@ -117,12 +146,21 @@ export default function SessionScreen() {
       setNoCardsMode(false);
       setNoCardsGraceUntil(null);
 
-      console.log("[SESSION] Calling getSession for deck:", selectedDeckId);
-      const res = await getSession(selectedDeckId);
-      console.log("[SESSION] getSession response:", JSON.stringify(res));
+      let safeCards: any[];
 
-      const safeCards = (res.cards || []).filter(Boolean);
-      console.log("[SESSION] safeCards count:", safeCards.length);
+      if (isShuffling) {
+        console.log("[SESSION] Shuffle mode — fetching from", shuffleDeckIds.length, "decks");
+        const results = await Promise.all(shuffleDeckIds.map((id) => getSession(id)));
+        const merged = results.flatMap((res) => (res.cards || []).filter(Boolean));
+        safeCards = fisherYatesShuffle(merged);
+        console.log("[SESSION] Shuffle merged card count:", safeCards.length);
+      } else {
+        console.log("[SESSION] Calling getSession for deck:", selectedDeckId);
+        const res = await getSession(selectedDeckId!);
+        console.log("[SESSION] getSession response:", JSON.stringify(res));
+        safeCards = (res.cards || []).filter(Boolean);
+        console.log("[SESSION] safeCards count:", safeCards.length);
+      }
 
       if (!safeCards.length) {
         console.log("[SESSION] No cards — entering noCardsMode, granting grace period");
@@ -416,6 +454,26 @@ export default function SessionScreen() {
   }
 }
 
+  async function openTutor() {
+    if (!isPaidUser) {
+      Alert.alert("Paid Feature", "Upgrade to unlock the AI Tutor.");
+      return;
+    }
+    const card = cards[index];
+    if (!card) return;
+    setTutorVisible(true);
+    setTutorText("");
+    setTutorLoading(true);
+    try {
+      const explanation = await askAITutor(card.front, card.back);
+      setTutorText(explanation);
+    } catch {
+      setTutorText("Sorry, couldn't load an explanation right now. Try again.");
+    } finally {
+      setTutorLoading(false);
+    }
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -424,7 +482,15 @@ export default function SessionScreen() {
     );
   }
 
-  if (!selectedDeckId) {
+  if (shuffleMode && shuffleDeckIds.length === 0) {
+    return (
+      <View style={styles.center}>
+        <Text style={{ color: "white" }}>Select at least one deck in Shuffle Mode.</Text>
+      </View>
+    );
+  }
+
+  if (!shuffleMode && !selectedDeckId) {
     return (
       <View style={styles.center}>
         <Text style={{ color: "white" }}>Select a deck first.</Text>
@@ -530,6 +596,10 @@ export default function SessionScreen() {
         {showAnswer && (
           <CardContent text={card.back} media={card.backMedia} textStyle={styles.cardBack} onPlayAudio={playAudio} isPlayingAudio={isPlayingAudio} />
         )}
+
+        <Pressable onPress={openTutor} style={styles.tutorBtn}>
+          <Text style={styles.tutorBtnText}>🤖 AI Tutor</Text>
+        </Pressable>
       </View>
 
       <View style={styles.bottomSection}>
@@ -564,6 +634,38 @@ export default function SessionScreen() {
           </>
         )}
       </View>
+
+      {/* AI TUTOR MODAL */}
+      <Modal
+        visible={tutorVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setTutorVisible(false)}
+      >
+        <View style={styles.tutorOverlay}>
+          <View style={styles.tutorSheet}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <Text style={{ color: "white", fontWeight: "800", fontSize: 17 }}>🤖 AI Tutor</Text>
+              <Pressable onPress={() => setTutorVisible(false)}>
+                <Text style={{ color: "#A9BDDB", fontSize: 22, lineHeight: 24 }}>×</Text>
+              </Pressable>
+            </View>
+
+            {tutorLoading ? (
+              <View style={{ alignItems: "center", paddingVertical: 32 }}>
+                <ActivityIndicator color="#D86732" />
+                <Text style={{ color: "#A9BDDB", marginTop: 12 }}>Thinking...</Text>
+              </View>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={{ color: "#e2e8f0", lineHeight: 24, fontSize: 15 }}>
+                  {tutorText}
+                </Text>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -721,5 +823,38 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontWeight: "700",
     textTransform: "capitalize",
+  },
+
+  tutorBtn: {
+    marginTop: 20,
+    alignSelf: "center",
+    backgroundColor: "#161b22",
+    borderWidth: 1,
+    borderColor: "#2a2e36",
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+  },
+
+  tutorBtnText: {
+    color: "#A9BDDB",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  tutorOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+
+  tutorSheet: {
+    backgroundColor: "#0f172a",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    maxHeight: "70%",
+    borderTopWidth: 1,
+    borderColor: "#2a2e36",
   },
 });
