@@ -65,8 +65,12 @@ export default function ParentDashboard() {
         // Read the stored preference, not the live shield state.
         // The shield may be temporarily cleared during an unlock window after a
         // session — that doesn't mean the user disabled self-blocking.
+        // Also reapply the shield here so device restarts don't silently lift it;
+        // applyShield() already skips during active unlock windows.
         AsyncStorage.getItem(SELF_BLOCK_KEY).then((val) => {
-          setSelfBlocking(val === "true");
+          const enabled = val === "true";
+          setSelfBlocking(enabled);
+          if (enabled) applyShield().catch(() => {});
         }).catch(() => {});
       } else if (Platform.OS === "android") {
         getAndroidParentSelfBlockingStatus().then((res) => {

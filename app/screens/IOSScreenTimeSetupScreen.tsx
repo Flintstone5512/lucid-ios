@@ -1,6 +1,5 @@
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import { NativeModules } from "react-native";
+import { useCallback, useState } from "react";
 import {
   Alert,
   Linking,
@@ -11,6 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   applyShield,
   getIOSAuthorizationStatus,
@@ -18,6 +18,7 @@ import {
   hasIOSAppSelection,
   presentAppPicker,
   requestIOSAuthorization,
+  scheduleBlockNotification,
   startMonitoringBlockedApps,
 } from "../../services/nativeBridge";
 import { LucidTheme } from "../../constants/lucidTheme";
@@ -97,6 +98,16 @@ export default function IOSScreenTimeSetupScreen() {
     try {
       await startMonitoringBlockedApps();
       await applyShield();
+
+      // The DeviceActivity extension fires a notification when the threshold fires,
+      // but extension UNUserNotificationCenter calls can be silently dropped by iOS.
+      // Schedule a JS-side backup notification using the stored daily limit (or the
+      // same 30-min default that startMonitoringBlockedApps falls back to).
+      // This ensures the user hears from Lucid even on the very first run.
+      const stored = await AsyncStorage.getItem("blockIntervalMinutes").catch(() => null);
+      const limitMinutes = stored ? parseInt(stored, 10) : 30;
+      scheduleBlockNotification(limitMinutes).catch(() => {});
+
       router.replace("/(tabs)");
     } catch (err: any) {
       Alert.alert("Error", err.message ?? "Could not apply block. Try again.");

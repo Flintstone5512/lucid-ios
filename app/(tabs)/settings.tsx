@@ -81,19 +81,22 @@ export default function SettingsScreen() {
 
       // Sync shield display settings to App Group for iOS extensions
       if (Platform.OS === "ios") {
+        const unlockMinutes = Number(payload.timerPolicy.unlockMinutes);
+
         syncScreenTimeSettings(
           Number(payload.timerPolicy.cardsRequired),
-          Number(payload.timerPolicy.unlockMinutes),
+          unlockMinutes,
           settings.focusMode || "soft"
         ).catch(() => {});
 
-        // Push the new daily limit and re-register the DeviceActivity threshold
-        // so the monitor extension fires after the updated duration, not the old one.
-        const limitMinutes = Number(payload.socialPolicy.dailyLimitMinutes);
-        if (limitMinutes > 0) {
-          setDailyLimit(limitMinutes)
-            .then(() => startMonitoringBlockedApps())
-            .then(() => scheduleBlockNotification(limitMinutes))
+        // The DeviceActivity threshold and the JS-side backup notification are
+        // both driven by unlockMinutes — the same value the user sets in the
+        // timer policy. This keeps blocking/unblocking in sync with what the
+        // settings screen shows: study → unlock for N minutes → re-block after N.
+        if (unlockMinutes > 0) {
+          setDailyLimit(unlockMinutes)
+            .then(() => startMonitoringBlockedApps(unlockMinutes))
+            .then(() => scheduleBlockNotification(unlockMinutes))
             .catch(() => {});
         }
       }

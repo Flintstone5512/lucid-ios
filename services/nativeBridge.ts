@@ -274,18 +274,14 @@ export async function grantNativeUnlock(expiresAtIso: string) {
     return grantAndroidUnlock(expiresAtIso);
   } else if (Platform.OS === "ios") {
     const result = await scheduleUnlockWindow(epochMs);
-    // Restart DeviceActivity with the ORIGINAL block interval (not the unlock
-    // duration). Using unlockMinutes as the threshold (build 41) caused the
-    // extension to not fire until the user had that many minutes of usage —
-    // if unlock = 30 min, the JS notification fired at 30 min clock time but
-    // the shield never re-engaged because usage hadn't reached 30 min yet.
-    startMonitoringBlockedApps().catch(() => {});
-    // Pre-schedule the re-block notification for the original block interval
-    // so it fires roughly when DeviceActivity threshold will be hit.
-    AsyncStorage.getItem("blockIntervalMinutes").then((stored) => {
-      const limitMinutes = parseInt(stored || "30", 10);
-      if (limitMinutes > 0) scheduleBlockNotification(limitMinutes).catch(() => {});
-    }).catch(() => {});
+    // The unlock duration (in minutes) is the single source of truth for both
+    // the DeviceActivity re-block threshold and the JS backup notification.
+    // DeviceActivity fires when the user has used their social apps for this
+    // many minutes. The JS notification fires after the same number of clock
+    // minutes as a reliable backup (extension notifications can be dropped).
+    const unlockMinutes = Math.max(1, Math.round((epochMs - Date.now()) / 60000));
+    startMonitoringBlockedApps(unlockMinutes).catch(() => {});
+    scheduleBlockNotification(unlockMinutes).catch(() => {});
     return result;
   }
   return { ok: false };
