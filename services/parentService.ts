@@ -17,6 +17,8 @@ export async function updateChildRestrictions(payload: {
   childId: string;
   restrictions: {
     maxDailyMinutes: number;
+    unlockMinutes?: number;
+    cardsRequired?: number;
     hardcoreMode?: boolean;
     blockedSites?: string[];
   };

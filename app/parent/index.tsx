@@ -365,6 +365,12 @@ function ChildCard({ child, reload }: any) {
   const [limit, setLimit] = useState(
     String(child.restrictions?.maxDailyMinutes || 60)
   );
+  const [unlockMinutes, setUnlockMinutes] = useState(
+    String(child.restrictions?.unlockMinutes || 10)
+  );
+  const [cardsRequired, setCardsRequired] = useState(
+    String(child.restrictions?.cardsRequired || 5)
+  );
   const [mode, setMode] = useState(child.focusMode || "soft");
 
   async function save() {
@@ -372,6 +378,8 @@ function ChildCard({ child, reload }: any) {
       childId: child.userId,
       restrictions: {
         maxDailyMinutes: Number(limit),
+        unlockMinutes: Number(unlockMinutes),
+        cardsRequired: Number(cardsRequired),
       },
       focusMode: mode,
     });
@@ -415,6 +423,24 @@ function ChildCard({ child, reload }: any) {
       <TextInput
         value={limit}
         onChangeText={setLimit}
+        keyboardType="numeric"
+        style={styles.input}
+      />
+
+      <Text style={styles.label}>Unlock Duration (minutes per session)</Text>
+
+      <TextInput
+        value={unlockMinutes}
+        onChangeText={setUnlockMinutes}
+        keyboardType="numeric"
+        style={styles.input}
+      />
+
+      <Text style={styles.label}>Cards Required per Session</Text>
+
+      <TextInput
+        value={cardsRequired}
+        onChangeText={setCardsRequired}
         keyboardType="numeric"
         style={styles.input}
       />
