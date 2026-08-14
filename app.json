@@ -35,7 +35,7 @@
     "ios": {
       "bundleIdentifier": "com.yourapp.scrolltax",
       "deploymentTarget": "16.0",
-      "buildNumber": "49"
+      "buildNumber": "50"
     },
 
     "android": {
