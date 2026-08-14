@@ -12,6 +12,7 @@ import {
   requestUnlock,
 } from "../services/api";
 import { refreshUserContext } from "../services/contextService";
+import { cancelMotivationalNotification } from "../services/motivationalNotificationService";
 import { loadMode } from "../services/settingsStorage";
 import { useRefocusStore } from "../store/useRefocusStore";
 import { ensurePermissions } from "../utils/ensurePermissions";
@@ -265,6 +266,8 @@ async function handleDeepLink(url: string) {
     const sub = AppState.addEventListener("change", async (state) => {
       if (state === "active") {
         console.log("🔁 App resumed — rechecking permissions");
+        // User is back in the app - cancel any pending motivational notification
+        cancelMotivationalNotification().catch(() => {});
         await refreshPermissions();
 
         if (Platform.OS === "ios") {

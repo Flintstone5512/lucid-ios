@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { Audio, Video, ResizeMode } from "expo-av";
+import { Audio, Video, ResizeMode, InterruptionModeIOS, InterruptionModeAndroid } from "expo-av";
 
 type MediaRef = { type: "image" | "audio" | "video"; url: string };
 
@@ -59,12 +59,14 @@ import { showRewardedAd } from "../services/adService";
 import { askAITutor } from "../services/aiDeckService";
 import api from "../services/api";
 import { syncEnforcementDecision } from "../services/enforcementSync";
+import { scheduleMotivationalNotification } from "../services/motivationalNotificationService";
 import {
   grantNativeUnlock,
   hideBlockingOverlay,
   reopenBlockedApp,
 } from "../services/nativeBridge";
 import { getSession, submitReview } from "../services/reviewService";
+import { getSettings } from "../services/settingsService";
 import { useRefocusStore } from "../store/useRefocusStore";
 
 const NO_CARDS_GRACE_MINUTES = 20;
@@ -90,6 +92,8 @@ export default function SessionScreen() {
   const [tutorLoading, setTutorLoading] = useState(false);
   const [tutorText, setTutorText] = useState("");
 
+  const [policyMinutes, setPolicyMinutes] = useState(1);
+
   const {
     selectedDeckId,
     setStatePatch,
@@ -103,12 +107,18 @@ export default function SessionScreen() {
 
   const isPaidUser = plan !== null && plan !== "free";
 
+  const shuffleDeckIdsKey = [...shuffleDeckIds].sort().join(",");
+
   useEffect(() => {
     load();
-  }, [selectedDeckId, shuffleMode, shuffleDeckIds]);
+  }, [selectedDeckId, shuffleMode, shuffleDeckIdsKey]);
 
   useEffect(() => {
   console.log("✅ SESSION SCREEN MOUNTED");
+  getSettings().then((res) => {
+    const mins = res.settings?.timerPolicy?.unlockMinutes;
+    if (mins && mins > 0) setPolicyMinutes(mins);
+  }).catch(() => {});
 }, []);
 
   function fisherYatesShuffle(arr: any[]) {
@@ -193,6 +203,19 @@ export default function SessionScreen() {
     }
   }
 
+  // Init audio session once on mount
+  useEffect(() => {
+    Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      allowsRecordingIOS: false,
+      staysActiveInBackground: false,
+      interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+      interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    }).catch((e) => console.warn("[SESSION] setAudioMode failed", e));
+  }, []);
+
   useEffect(() => {
     setStartTime(Date.now());
     setIsPlayingAudio(false);
@@ -201,6 +224,22 @@ export default function SessionScreen() {
       soundRef.current = null;
     }
   }, [index]);
+
+  // Autoplay front audio when card changes
+  useEffect(() => {
+    if (loading || !cards.length) return;
+    const card = cards[index];
+    const frontAudio = card?.frontMedia?.find((m: MediaRef) => m.type === "audio");
+    if (frontAudio) playAudio(frontAudio.url);
+  }, [index, loading]);
+
+  // Autoplay back audio when answer is revealed
+  useEffect(() => {
+    if (!showAnswer || !cards.length) return;
+    const card = cards[index];
+    const backAudio = card?.backMedia?.find((m: MediaRef) => m.type === "audio");
+    if (backAudio) playAudio(backAudio.url);
+  }, [showAnswer]);
 
   useEffect(() => {
     return () => {
@@ -217,15 +256,7 @@ export default function SessionScreen() {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        allowsRecordingIOS: false,
-        staysActiveInBackground: false,
-      });
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: url },
-        { shouldPlay: true }   // start playback immediately once loaded
-      );
+      const { sound } = await Audio.Sound.createAsync({ uri: url });
       soundRef.current = sound;
       setIsPlayingAudio(true);
       sound.setOnPlaybackStatusUpdate((status) => {
@@ -235,6 +266,7 @@ export default function SessionScreen() {
           soundRef.current = null;
         }
       });
+      await sound.playAsync();
     } catch (err) {
       console.error("[SESSION] audio playback failed", err);
       setIsPlayingAudio(false);
@@ -265,6 +297,13 @@ export default function SessionScreen() {
         setStatePatch({ unlockedUntil: expiresMs });
         console.log("[SESSION] unlockedUntil set to", expiresAt);
       }
+
+      // Schedule motivational notification for when the phone is idle later
+      scheduleMotivationalNotification(
+        cards.length,
+        unlockData?.unlockMinutes ?? policyMinutes,
+        streak?.currentStreak ?? 0
+      ).catch(() => {});
 
       // Sync native enforcement state now that the unlock exists in DB
       await syncEnforcementDecision();
@@ -417,13 +456,13 @@ export default function SessionScreen() {
       console.log("🔥 LAST CARD — forcing exit");
 
       const expiresAt = new Date(
-        Date.now() + 60 * 1000
+        Date.now() + policyMinutes * 60 * 1000
       ).toISOString();
 
       await grantNativeUnlock(expiresAt);
       await hideBlockingOverlay();
 
-      setUnlockData({ unlockMinutes: 1 });
+      setUnlockData({ unlockMinutes: policyMinutes });
       setCompleted(true);
 
       return;
@@ -445,7 +484,7 @@ export default function SessionScreen() {
       console.log("⚠️ FAILSAFE LAST CARD EXIT");
 
       const expiresAt = new Date(
-        Date.now() + 60 * 1000
+        Date.now() + policyMinutes * 60 * 1000
       ).toISOString();
 
       try {
@@ -455,7 +494,7 @@ export default function SessionScreen() {
         console.log("⚠️ unlock fallback failed:", e);
       }
 
-      setUnlockData({ unlockMinutes: 1 });
+      setUnlockData({ unlockMinutes: policyMinutes });
       setCompleted(true);
 
       return;
