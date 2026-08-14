@@ -20,6 +20,7 @@ import { syncEnforcementSettings } from "../../services/nativeBridge";
 import { syncEnforcementDecision } from "../../services/enforcementSync";
 import { syncSettings as syncScreenTimeSettings, applyShield, clearShield, setDailyLimit } from "../../modules/screen-time";
 import { startMonitoringBlockedApps, scheduleBlockNotification } from "../../services/nativeBridge";
+import { cancelGuiltNotifications, scheduleGuiltNotifications } from "../../services/motivationalNotificationService";
 import { Platform } from "react-native";
 
 export default function SettingsScreen() {
@@ -234,6 +235,14 @@ export default function SettingsScreen() {
                 } else {
                   await clearShield().catch(() => {});
                 }
+              }
+
+              // Schedule guilt nudges when blocking is turned off,
+              // cancel them immediately when it is turned back on.
+              if (next) {
+                cancelGuiltNotifications().catch(() => {});
+              } else {
+                scheduleGuiltNotifications().catch(() => {});
               }
 
             } catch (err) {
