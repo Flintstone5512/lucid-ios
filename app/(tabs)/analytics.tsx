@@ -16,8 +16,9 @@ import { useRefocusStore } from "../../store/useRefocusStore";
 
 export default function AnalyticsScreen() {
   const [dashboard, setDashboard] = useState<any>(null);
+  const [parentDashboard, setParentDashboard] = useState<any>(null);
   const [children, setChildren] = useState<any[]>([]);
-  const [selectedChildIndex, setSelectedChildIndex] = useState(0);
+  const [selectedTabIndex, setSelectedTabIndex] = useState(0);
 
   const { context } = useRefocusStore();
   const role = context?.role || "solo";
@@ -31,25 +32,29 @@ export default function AnalyticsScreen() {
 
     if (role === "parent") {
       setChildren(res.children || []);
+      if (res.dashboard) setParentDashboard(res.dashboard);
     } else {
       setDashboard(res.dashboard);
     }
   }
 
   /* =========================
-     🔥 RESOLVE DASHBOARD
+     🔥 RESOLVE TABS + DASHBOARD
   ========================= */
 
-  const selectedChild =
-    role === "parent" ? children[selectedChildIndex] : null;
+  // Build unified tab list: parent's own entry first (if self-blocking), then children
+  const tabs = role === "parent"
+    ? [
+        ...(parentDashboard ? [{ name: "My Stats", dashboard: parentDashboard, isSelf: true }] : []),
+        ...children.map((c) => ({ name: c.name, dashboard: c.dashboard, isSelf: false, childId: c.childId })),
+      ]
+    : [];
 
-  const data =
-    role === "parent"
-      ? selectedChild?.dashboard
-      : dashboard;
-// 🔥 GUARD: parent has no children
-// 🔥 EMPTY STATE (PARENT — NO CHILDREN)
-if (role === "parent" && children.length === 0) {
+  const selectedTab = role === "parent" ? tabs[selectedTabIndex] : null;
+
+  const data = role === "parent" ? selectedTab?.dashboard : dashboard;
+// 🔥 EMPTY STATE (PARENT — NO CHILDREN, NO SELF DATA)
+if (role === "parent" && tabs.length === 0) {
   return (
     <ScrollView style={styles.container}>
       
@@ -169,32 +174,36 @@ if (role === "parent" && children.length === 0) {
       <View style={styles.headerCard}>
         <Text style={styles.title}>
           {role === "parent"
-            ? selectedChild?.name || "Child Analytics"
+            ? selectedTab?.isSelf
+              ? "My Analytics"
+              : selectedTab?.name || "Child Analytics"
             : "Your Analytics"}
         </Text>
 
         <Text style={styles.subtitle}>
           {role === "parent"
-            ? "Monitor behavior and learning patterns"
+            ? selectedTab?.isSelf
+              ? "Your own flashcard sessions and focus stats"
+              : "Monitor behavior and learning patterns"
             : "Track your focus and growth"}
         </Text>
       </View>
 
       {/* =========================
-         🔥 CHILD SELECTOR
+         🔥 TAB SELECTOR
       ========================= */}
-      {role === "parent" && children.length > 0 && (
+      {role === "parent" && tabs.length > 1 && (
         <ScrollView horizontal style={styles.childSelector}>
-          {children.map((child, i) => (
+          {tabs.map((tab, i) => (
             <Pressable
-              key={child.childId}
-              onPress={() => setSelectedChildIndex(i)}
+              key={tab.isSelf ? "__self__" : tab.childId}
+              onPress={() => setSelectedTabIndex(i)}
               style={[
                 styles.childTab,
-                i === selectedChildIndex && styles.childTabActive,
+                i === selectedTabIndex && styles.childTabActive,
               ]}
             >
-              <Text style={styles.childText}>{child.name}</Text>
+              <Text style={styles.childText}>{tab.name}</Text>
             </Pressable>
           ))}
         </ScrollView>
@@ -252,7 +261,7 @@ if (role === "parent" && children.length === 0) {
       ========================= */}
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>
-          {role === "parent" ? "Child Behavior" : "Behavior"}
+          {role === "parent" && !selectedTab?.isSelf ? "Child Behavior" : "Behavior"}
         </Text>
 
         <MetricCard
@@ -263,7 +272,7 @@ if (role === "parent" && children.length === 0) {
         />
 
         <Text style={styles.helper}>
-          {role === "parent"
+          {role === "parent" && !selectedTab?.isSelf
             ? "How effectively your child converts screen time into learning"
             : "How often you turn scrolling into learning"}
         </Text>

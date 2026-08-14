@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 
-import { generateDeck, importAnkiDeck, previewAnkiDeck, remapDeckFields, CardType, AnkiPreview } from "../../services/aiDeckService";
+import { generateDeck, importAnkiDeck, previewAnkiDeck, importExcelDeck, previewExcelDeck, remapDeckFields, CardType, AnkiPreview } from "../../services/aiDeckService";
 import { useRefocusStore } from "../../store/useRefocusStore";
 import {
   saveSelectedDeck,
@@ -33,7 +33,9 @@ function AnkiFieldModal({
   title, subtitle, fields, sample,
   frontIndices, backIndices, audioIndex,
   onFrontToggle, onBackToggle, onAudioToggle,
+  deckName, onDeckNameChange,
   onConfirm, confirmLabel, onCancel,
+  showAudio = true,
 }: {
   title: string; subtitle: string;
   fields: string[];
@@ -42,7 +44,9 @@ function AnkiFieldModal({
   onFrontToggle: (i: number) => void;
   onBackToggle:  (i: number) => void;
   onAudioToggle: (i: number) => void;
+  deckName?: string; onDeckNameChange?: (name: string) => void;
   onConfirm: () => void; confirmLabel: string; onCancel: () => void;
+  showAudio?: boolean;
 }) {
   const frontPreview = frontIndices.map((i) => sample[i]?.value).filter(Boolean).join(" · ");
   const backPreview  = backIndices.map((i) => sample[i]?.value).filter(Boolean).join("\n");
@@ -55,6 +59,24 @@ function AnkiFieldModal({
       </View>
 
       <ScrollView style={{ flex: 1, padding: 20 }}>
+        {onDeckNameChange !== undefined && (
+          <TextInput
+            value={deckName}
+            onChangeText={onDeckNameChange}
+            placeholder="Deck name (optional)"
+            placeholderTextColor="#777"
+            style={{
+              borderWidth: 1,
+              borderColor: "#2a2e36",
+              backgroundColor: "#0f172a",
+              color: "white",
+              padding: 12,
+              borderRadius: 12,
+              marginBottom: 16,
+            }}
+          />
+        )}
+
         <Text style={{ color: "#A9BDDB", fontSize: 13, marginBottom: 16, lineHeight: 18 }}>
           Select one or more fields per side. Multiple fields are joined together on the card.
         </Text>
@@ -113,28 +135,32 @@ function AnkiFieldModal({
           );
         })}
 
-        {/* AUDIO — optional single pick */}
-        <Text style={{ color: "#A9BDDB", fontWeight: "700", marginTop: 16, marginBottom: 4 }}>Audio Field <Text style={{ fontWeight: "400", fontSize: 12 }}>(optional)</Text></Text>
-        <Text style={{ color: "#555", fontSize: 12, marginBottom: 8 }}>Pick the field containing [sound:…] tags. Plays on the front of each card.</Text>
-        {fields.map((name, i) => {
-          const selected = audioIndex === i;
-          return (
-            <Pressable key={`a${i}`} onPress={() => onAudioToggle(i)} style={{
-              flexDirection: "row", alignItems: "center",
-              backgroundColor: selected ? "rgba(80,200,120,0.12)" : "#161b22",
-              borderWidth: 1, borderColor: selected ? "#50c878" : "#2a2e36",
-              borderRadius: 10, padding: 12, marginBottom: 6,
-            }}>
-              <View style={{
-                width: 18, height: 18, borderRadius: 9, borderWidth: 2,
-                borderColor: selected ? "#50c878" : "#555",
-                backgroundColor: selected ? "#50c878" : "transparent",
-                marginRight: 10,
-              }} />
-              <Text style={{ color: selected ? "#50c878" : "#A9BDDB", fontWeight: selected ? "700" : "400", fontSize: 13 }}>{name}</Text>
-            </Pressable>
-          );
-        })}
+        {/* AUDIO — optional single pick, Anki only */}
+        {showAudio && (
+          <>
+            <Text style={{ color: "#A9BDDB", fontWeight: "700", marginTop: 16, marginBottom: 4 }}>Audio Field <Text style={{ fontWeight: "400", fontSize: 12 }}>(optional)</Text></Text>
+            <Text style={{ color: "#555", fontSize: 12, marginBottom: 8 }}>Pick the field containing [sound:…] tags. Plays on the front of each card.</Text>
+            {fields.map((name, i) => {
+              const selected = audioIndex === i;
+              return (
+                <Pressable key={`a${i}`} onPress={() => onAudioToggle(i)} style={{
+                  flexDirection: "row", alignItems: "center",
+                  backgroundColor: selected ? "rgba(80,200,120,0.12)" : "#161b22",
+                  borderWidth: 1, borderColor: selected ? "#50c878" : "#2a2e36",
+                  borderRadius: 10, padding: 12, marginBottom: 6,
+                }}>
+                  <View style={{
+                    width: 18, height: 18, borderRadius: 9, borderWidth: 2,
+                    borderColor: selected ? "#50c878" : "#555",
+                    backgroundColor: selected ? "#50c878" : "transparent",
+                    marginRight: 10,
+                  }} />
+                  <Text style={{ color: selected ? "#50c878" : "#A9BDDB", fontWeight: selected ? "700" : "400", fontSize: 13 }}>{name}</Text>
+                </Pressable>
+              );
+            })}
+          </>
+        )}
 
         {/* Live preview */}
         {sample.length > 0 && (frontIndices.length > 0 || backIndices.length > 0) && (
@@ -172,6 +198,8 @@ function AnkiFieldModal({
 
 export default function DecksScreen() {
   const [prompt, setPrompt] = useState("");
+  const [deckNameInput, setDeckNameInput] = useState("");
+  const [importDeckName, setImportDeckName] = useState("");
   const [cardType, setCardType] = useState<CardType>("basic");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
@@ -224,6 +252,15 @@ export default function DecksScreen() {
   const [audioFieldIndex, setAudioFieldIndex] = useState<number | null>(null);
   const [fieldModalVisible, setFieldModalVisible] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+
+  // Excel field-mapping modal state (import)
+  const [excelPendingFile, setExcelPendingFile] = useState<any>(null);
+  const [excelPreview, setExcelPreview] = useState<AnkiPreview | null>(null);
+  const [excelFrontIndices, setExcelFrontIndices] = useState<number[]>([0]);
+  const [excelBackIndices, setExcelBackIndices] = useState<number[]>([1]);
+  const [excelDeckName, setExcelDeckName] = useState("");
+  const [excelModalVisible, setExcelModalVisible] = useState(false);
+  const [excelPreviewing, setExcelPreviewing] = useState(false);
 
   // Remap modal state (paid users, existing anki decks)
   const [remapDeck, setRemapDeck] = useState<any>(null);
@@ -326,12 +363,13 @@ export default function DecksScreen() {
     setStatus("Generating...");
 
     try {
-      await generateDeck(prompt.trim(), cardType);
+      await generateDeck(prompt.trim(), cardType, deckNameInput.trim() || undefined);
       await refreshUserContext();
       await loadDecks();
 
       setStatus("✅ Deck created");
       setPrompt("");
+      setDeckNameInput("");
     } catch (err) {
       console.error(err);
       setStatus("❌ Failed to generate");
@@ -396,6 +434,8 @@ export default function DecksScreen() {
       setFrontFieldIndices([0]);
       setBackFieldIndices([Math.min(1, fields.length - 1)]);
       setAudioFieldIndex(null);
+      const rawName = preview.deckName ?? "";
+      setImportDeckName(rawName && rawName !== "Default" ? rawName : "");
       setFieldModalVisible(true);
       setStatus("");
     } catch (err) {
@@ -413,7 +453,7 @@ export default function DecksScreen() {
     setStatus("Importing...");
 
     try {
-      await importAnkiDeck(pendingFile, frontFieldIndices, backFieldIndices, audioFieldIndex);
+      await importAnkiDeck(pendingFile, frontFieldIndices, backFieldIndices, audioFieldIndex, importDeckName.trim() || undefined);
       await refreshUserContext();
       await loadDecks();
       setStatus("✅ Deck imported");
@@ -424,6 +464,61 @@ export default function DecksScreen() {
       setLoading(false);
       setPendingFile(null);
       setAnkiPreview(null);
+    }
+  }
+
+  async function handleExcelUpload() {
+    const result = await DocumentPicker.getDocumentAsync({ type: "*/*" });
+    if (result.canceled) return;
+
+    const file = result.assets[0];
+    const state = useRefocusStore.getState();
+    const currentMaxDecks = state.limits?.maxDecks ?? 2;
+
+    if (decks.length >= currentMaxDecks) {
+      setStatus("⚠️ Deck limit reached");
+      return;
+    }
+
+    setExcelPreviewing(true);
+    setStatus("Reading spreadsheet...");
+
+    try {
+      const preview = await previewExcelDeck(file);
+      const fields = preview.modelSchemas?.[0]?.fields ?? [];
+      setExcelPendingFile(file);
+      setExcelPreview(preview);
+      setExcelFrontIndices([0]);
+      setExcelBackIndices([Math.min(1, fields.length - 1)]);
+      setExcelDeckName("");
+      setExcelModalVisible(true);
+      setStatus("");
+    } catch (err) {
+      console.error(err);
+      setStatus("❌ Could not read spreadsheet");
+    } finally {
+      setExcelPreviewing(false);
+    }
+  }
+
+  async function handleConfirmExcelImport() {
+    if (!excelPendingFile) return;
+    setExcelModalVisible(false);
+    setLoading(true);
+    setStatus("Importing...");
+
+    try {
+      await importExcelDeck(excelPendingFile, excelFrontIndices, excelBackIndices, excelDeckName.trim() || undefined);
+      await refreshUserContext();
+      await loadDecks();
+      setStatus("✅ Deck imported");
+    } catch (err: any) {
+      console.error(err);
+      setStatus("❌ Upload failed");
+    } finally {
+      setLoading(false);
+      setExcelPendingFile(null);
+      setExcelPreview(null);
     }
   }
 
@@ -603,6 +698,22 @@ export default function DecksScreen() {
         </Text>
 
         <TextInput
+          value={deckNameInput}
+          onChangeText={setDeckNameInput}
+          placeholder="Deck name (optional)"
+          placeholderTextColor="#777"
+          style={{
+            borderWidth: 1,
+            borderColor: "#2a2e36",
+            backgroundColor: "#0f172a",
+            color: "white",
+            padding: 12,
+            borderRadius: 12,
+            marginBottom: 10,
+          }}
+        />
+
+        <TextInput
           value={prompt}
           onChangeText={setPrompt}
           multiline
@@ -707,22 +818,42 @@ Examples:
         }}
       >
         <Text style={{ color: "#A9BDDB", fontSize: 13 }}>
-          Upload an Anki deck (.apkg) to bring your existing study system into Lucid.
+          Import from Anki (.apkg) or a spreadsheet (.xlsx, .csv). Choose your columns for the front and back of each card.
         </Text>
 
-        <Pressable
-          onPress={handleUpload}
-          style={{
-            backgroundColor: "#1b2540",
-            padding: 16,
-            borderRadius: 14,
-            marginTop: 12,
-          }}
-        >
-          <Text style={{ color: "white", textAlign: "center", fontWeight: "700" }}>
-            Upload .apkg
-          </Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+          <Pressable
+            onPress={handleUpload}
+            style={{
+              flex: 1,
+              backgroundColor: "#1b2540",
+              padding: 14,
+              borderRadius: 14,
+              alignItems: "center",
+            }}
+          >
+            {previewing
+              ? <ActivityIndicator size="small" color="#A9BDDB" />
+              : <Text style={{ color: "white", fontWeight: "700" }}>Upload .apkg</Text>
+            }
+          </Pressable>
+
+          <Pressable
+            onPress={handleExcelUpload}
+            style={{
+              flex: 1,
+              backgroundColor: "#1b2540",
+              padding: 14,
+              borderRadius: 14,
+              alignItems: "center",
+            }}
+          >
+            {excelPreviewing
+              ? <ActivityIndicator size="small" color="#A9BDDB" />
+              : <Text style={{ color: "white", fontWeight: "700" }}>Upload .xlsx</Text>
+            }
+          </Pressable>
+        </View>
       </View>
 
       {/* ADS / UPGRADE BLOCK */}
@@ -1012,7 +1143,7 @@ Examples:
       >
         <AnkiFieldModal
           title="Map Card Fields"
-          subtitle={ankiPreview ? `${ankiPreview.deckName} · ${ankiPreview.totalNotes} notes` : ""}
+          subtitle={ankiPreview ? `${ankiPreview.totalNotes} notes` : ""}
           fields={ankiPreview?.modelSchemas?.[0]?.fields ?? []}
           sample={ankiPreview?.samples?.[0] ?? []}
           frontIndices={frontFieldIndices}
@@ -1021,9 +1152,38 @@ Examples:
           onFrontToggle={(i) => setFrontFieldIndices(toggleIndex(frontFieldIndices, i))}
           onBackToggle={(i) => setBackFieldIndices(toggleIndex(backFieldIndices, i))}
           onAudioToggle={(i) => setAudioFieldIndex(audioFieldIndex === i ? null : i)}
+          deckName={importDeckName}
+          onDeckNameChange={setImportDeckName}
           onConfirm={handleConfirmImport}
           confirmLabel="Import Deck"
           onCancel={() => { setFieldModalVisible(false); setPendingFile(null); setAnkiPreview(null); }}
+        />
+      </Modal>
+
+      {/* EXCEL FIELD MAPPING MODAL (import) */}
+      <Modal
+        visible={excelModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => { setExcelModalVisible(false); setExcelPendingFile(null); setExcelPreview(null); }}
+      >
+        <AnkiFieldModal
+          title="Map Spreadsheet Columns"
+          subtitle={excelPreview ? `${excelPreview.totalNotes} rows` : ""}
+          fields={excelPreview?.modelSchemas?.[0]?.fields ?? []}
+          sample={excelPreview?.samples?.[0] ?? []}
+          frontIndices={excelFrontIndices}
+          backIndices={excelBackIndices}
+          audioIndex={null}
+          onFrontToggle={(i) => setExcelFrontIndices(toggleIndex(excelFrontIndices, i))}
+          onBackToggle={(i) => setExcelBackIndices(toggleIndex(excelBackIndices, i))}
+          onAudioToggle={() => {}}
+          deckName={excelDeckName}
+          onDeckNameChange={setExcelDeckName}
+          onConfirm={handleConfirmExcelImport}
+          confirmLabel="Import Deck"
+          onCancel={() => { setExcelModalVisible(false); setExcelPendingFile(null); setExcelPreview(null); }}
+          showAudio={false}
         />
       </Modal>
 

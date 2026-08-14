@@ -6,11 +6,12 @@ import api from "./api";
 
 export type CardType = "basic" | "multiple_choice" | "cloze" | "mixed";
 
-export async function generateDeck(prompt: string, cardType: CardType = "basic") {
+export async function generateDeck(prompt: string, cardType: CardType = "basic", deckName?: string) {
   const form = new FormData();
   form.append("type", "text");
   form.append("prompt", prompt);
   form.append("cardType", cardType);
+  if (deckName) form.append("deckName", deckName);
 
   const res = await api.post("/ai-deck", form, {
     headers: { "Content-Type": "multipart/form-data" },
@@ -63,6 +64,7 @@ export async function importAnkiDeck(
   frontFieldIndices: number[] = [0],
   backFieldIndices: number[]  = [1],
   audioFieldIndex: number | null = null,
+  deckName?: string,
 ) {
   const form = new FormData();
 
@@ -77,8 +79,59 @@ export async function importAnkiDeck(
   if (audioFieldIndex != null) {
     form.append("audioFieldIndex", String(audioFieldIndex));
   }
+  if (deckName) form.append("deckName", deckName);
 
   const res = await api.post("/import/apkg", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 90000,
+  });
+
+  return res.data;
+}
+
+/* =========================
+   🔥 IMPORT EXCEL (.xlsx / .csv)
+========================= */
+
+export async function previewExcelDeck(file: {
+  uri: string;
+  name: string;
+  mimeType?: string;
+}): Promise<AnkiPreview> {
+  const form = new FormData();
+  form.append("file", {
+    uri: file.uri,
+    name: file.name || "deck.xlsx",
+    type: file.mimeType || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  } as any);
+
+  const res = await api.post("/import/xlsx/preview", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 30000,
+  });
+
+  return res.data;
+}
+
+export async function importExcelDeck(
+  file: { uri: string; name: string; mimeType?: string },
+  frontFieldIndices: number[] = [0],
+  backFieldIndices: number[]  = [1],
+  deckName?: string,
+) {
+  const form = new FormData();
+
+  form.append("file", {
+    uri: file.uri,
+    name: file.name || "deck.xlsx",
+    type: file.mimeType || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  } as any);
+
+  form.append("frontFieldIndices", JSON.stringify(frontFieldIndices));
+  form.append("backFieldIndices",  JSON.stringify(backFieldIndices));
+  if (deckName) form.append("deckName", deckName);
+
+  const res = await api.post("/import/xlsx", form, {
     headers: { "Content-Type": "multipart/form-data" },
     timeout: 90000,
   });
