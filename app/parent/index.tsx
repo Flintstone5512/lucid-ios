@@ -319,6 +319,22 @@ export default function ParentDashboard() {
       )}
 
       {/* =========================
+         🧪 TEST MODE
+      ========================= */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Test Mode</Text>
+        <Text style={styles.helper}>
+          Create an active recall test from your child's mastered cards, schedule a notification, and download a PDF report when done.
+        </Text>
+        <Pressable
+          style={styles.primaryBtn}
+          onPress={() => router.push("/test")}
+        >
+          <Text style={styles.primaryBtnText}>Create a Test</Text>
+        </Pressable>
+      </View>
+
+      {/* =========================
          🔥 ADD CHILD
       ========================= */}
       <View style={styles.card}>

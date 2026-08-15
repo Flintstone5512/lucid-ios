@@ -157,6 +157,22 @@ export default function UserDashboard() {
       </View>
 
       {/* =========================
+         🧪 TEST MODE
+      ========================= */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Test Mode</Text>
+        <Text style={styles.helper}>
+          Quiz yourself on cards you've already mastered.
+        </Text>
+        <Pressable
+          onPress={() => router.push("/test")}
+          style={styles.cta}
+        >
+          <Text style={styles.ctaText}>Start a Test</Text>
+        </Pressable>
+      </View>
+
+      {/* =========================
          🔥 SOCIAL PROOF / COMPETITION
       ========================= */}
       <View style={styles.card}>
