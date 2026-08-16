@@ -1,5 +1,6 @@
+import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -23,9 +24,11 @@ export default function AnalyticsScreen() {
   const { context } = useRefocusStore();
   const role = context?.role || "solo";
 
-  useEffect(() => {
-    load();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [role])
+  );
 
   async function load() {
     const res = await getAnalyticsDashboard();
