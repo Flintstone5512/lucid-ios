@@ -262,9 +262,19 @@ export default function DecksScreen() {
       const fields = preview.modelSchemas?.[0]?.fields ?? [];
       setPendingFile(file);
       setAnkiPreview(preview);
-      setFrontFieldIndices([0]);
-      setBackFieldIndices([Math.min(1, fields.length - 1)]);
-      setAudioFieldIndex(null);
+      // Use server-suggested indices (auto-detected from field content) when available,
+      // otherwise fall back to simple positional defaults.
+      setFrontFieldIndices(
+        preview.suggestedFrontFieldIndices?.length
+          ? preview.suggestedFrontFieldIndices
+          : [0]
+      );
+      setBackFieldIndices(
+        preview.suggestedBackFieldIndices?.length
+          ? preview.suggestedBackFieldIndices
+          : [Math.min(1, fields.length - 1)]
+      );
+      setAudioFieldIndex(preview.suggestedAudioFieldIndex ?? null);
       const rawName = preview.deckName ?? "";
       setImportDeckName(rawName && rawName !== "Default" ? rawName : "");
       setFieldModalVisible(true);
