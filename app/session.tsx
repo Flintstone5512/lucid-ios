@@ -397,10 +397,25 @@ export default function SessionScreen() {
 
       if (isShuffling) {
         console.log("[SESSION] Shuffle mode — fetching from", shuffleDeckIds.length, "decks");
+
+        // Fetch cardsRequired policy so we can cap the merged total
+        let cardsRequired = 5;
+        try {
+          const settingsRes = await getSettings();
+          const cr = settingsRes.settings?.timerPolicy?.cardsRequired;
+          if (cr && cr > 0) cardsRequired = cr;
+        } catch {}
+
         const results = await Promise.all(shuffleDeckIds.map((id) => getSession(id)));
-        const merged = results.flatMap((res) => (res.cards || []).filter(Boolean));
-        safeCards = fisherYatesShuffle(merged);
-        console.log("[SESSION] Shuffle merged card count:", safeCards.length);
+        // Tag each card with its source deckId so submitReview always has a valid deckId
+        const merged = results.flatMap((res, i) =>
+          (res.cards || []).filter(Boolean).map((card: any) => ({
+            ...card,
+            deckId: card.deckId || shuffleDeckIds[i],
+          }))
+        );
+        safeCards = fisherYatesShuffle(merged).slice(0, cardsRequired);
+        console.log("[SESSION] Shuffle merged card count:", merged.length, "→ capped to", safeCards.length);
       } else {
         console.log("[SESSION] Calling getSession for deck:", selectedDeckId);
         const res = await getSession(selectedDeckId!);
@@ -760,6 +775,11 @@ export default function SessionScreen() {
 
       return;
     }
+
+    // Non-last card: advance anyway so the session never freezes on a failed submit
+    console.log("⚠️ Review submit failed — advancing to next card");
+    setIndex((prev) => prev + 1);
+    setShowAnswer(false);
   }
 }
 
