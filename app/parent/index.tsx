@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Modal,
   ScrollView,
   View,
   Text,
@@ -8,7 +9,18 @@ import {
   TextInput,
   StyleSheet,
   Platform,
+  ActivityIndicator,
 } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
+import { AnkiFieldModal } from "../../components/AnkiFieldModal";
+import {
+  previewAnkiDeck,
+  importAnkiDeckForChild,
+  previewExcelDeck,
+  importExcelDeckForChild,
+  generateDeckForChild,
+  AnkiPreview,
+} from "../../services/aiDeckService";
 
 function timeAgoLabel(dateStr: string | null): string {
   if (!dateStr) return "never";
@@ -50,6 +62,26 @@ export default function ParentDashboard() {
 
   const { context, limits } = useRefocusStore();
   const alertedRef = useRef(false);
+
+  // ── Deck management for child ─────────────────────
+  const [importTarget, setImportTarget] = useState<{ id: string; name: string } | null>(null);
+  const [importType, setImportType] = useState<"anki" | "excel" | null>(null);
+  const [deckImporting, setDeckImporting] = useState(false);
+
+  // Anki modal state
+  const [ankiPreview, setAnkiPreview] = useState<AnkiPreview | null>(null);
+  const [ankiFile, setAnkiFile] = useState<any>(null);
+  const [ankiFront, setAnkiFront] = useState<number[]>([0]);
+  const [ankiBack, setAnkiBack] = useState<number[]>([1]);
+  const [ankiAudio, setAnkiAudio] = useState<number | null>(null);
+  const [ankiDeckName, setAnkiDeckName] = useState("");
+
+  // Excel modal state
+  const [excelPreview, setExcelPreview] = useState<AnkiPreview | null>(null);
+  const [excelFile, setExcelFile] = useState<any>(null);
+  const [excelFront, setExcelFront] = useState<number[]>([0]);
+  const [excelBack, setExcelBack] = useState<number[]>([1]);
+  const [excelDeckName, setExcelDeckName] = useState("");
 
   const children = context?.account?.children || [];
   const maxChildren = limits?.maxChildren ?? 0;
@@ -156,6 +188,108 @@ export default function ParentDashboard() {
     }
   }
 
+  function toggleIndex(arr: number[], idx: number): number[] {
+    return arr.includes(idx) ? arr.filter((i) => i !== idx) : [...arr, idx];
+  }
+
+  function resetImportState() {
+    setImportTarget(null);
+    setImportType(null);
+    setAnkiPreview(null);
+    setAnkiFile(null);
+    setAnkiFront([0]);
+    setAnkiBack([1]);
+    setAnkiAudio(null);
+    setAnkiDeckName("");
+    setExcelPreview(null);
+    setExcelFile(null);
+    setExcelFront([0]);
+    setExcelBack([1]);
+    setExcelDeckName("");
+  }
+
+  async function handleImportAnki(childId: string, childName: string) {
+    const result = await DocumentPicker.getDocumentAsync({ type: "*/*" });
+    if (result.canceled) return;
+    const file = result.assets[0];
+    try {
+      const preview = await previewAnkiDeck(file);
+      const fields = preview.modelSchemas?.[0]?.fields ?? [];
+      setImportTarget({ id: childId, name: childName });
+      setImportType("anki");
+      setAnkiFile(file);
+      setAnkiPreview(preview);
+      setAnkiFront([0]);
+      setAnkiBack([Math.min(1, fields.length - 1)]);
+      setAnkiAudio(null);
+      const rawName = preview.deckName ?? "";
+      setAnkiDeckName(rawName && rawName !== "Default" ? rawName : "");
+    } catch {
+      Alert.alert("Error", "Could not read deck file.");
+    }
+  }
+
+  async function handleImportExcel(childId: string, childName: string) {
+    const result = await DocumentPicker.getDocumentAsync({ type: "*/*" });
+    if (result.canceled) return;
+    const file = result.assets[0];
+    try {
+      const preview = await previewExcelDeck(file);
+      setImportTarget({ id: childId, name: childName });
+      setImportType("excel");
+      setExcelFile(file);
+      setExcelPreview(preview);
+      setExcelFront([0]);
+      setExcelBack([Math.min(1, (preview.modelSchemas?.[0]?.fields?.length ?? 2) - 1)]);
+      setExcelDeckName("");
+    } catch {
+      Alert.alert("Error", "Could not read spreadsheet file.");
+    }
+  }
+
+  async function handleConfirmAnki() {
+    if (!ankiFile || !importTarget) return;
+    setImportType(null);
+    setDeckImporting(true);
+    try {
+      await importAnkiDeckForChild(
+        ankiFile,
+        ankiFront,
+        ankiBack,
+        ankiAudio,
+        ankiDeckName.trim() || undefined,
+        importTarget.id,
+      );
+      Alert.alert("Done", `Deck imported for ${importTarget.name}.`);
+    } catch {
+      Alert.alert("Error", "Import failed. Please try again.");
+    } finally {
+      setDeckImporting(false);
+      resetImportState();
+    }
+  }
+
+  async function handleConfirmExcel() {
+    if (!excelFile || !importTarget) return;
+    setImportType(null);
+    setDeckImporting(true);
+    try {
+      await importExcelDeckForChild(
+        excelFile,
+        excelFront,
+        excelBack,
+        excelDeckName.trim() || undefined,
+        importTarget.id,
+      );
+      Alert.alert("Done", `Deck imported for ${importTarget.name}.`);
+    } catch {
+      Alert.alert("Error", "Import failed. Please try again.");
+    } finally {
+      setDeckImporting(false);
+      resetImportState();
+    }
+  }
+
   if (!data) {
     return (
       <View style={styles.center}>
@@ -165,6 +299,7 @@ export default function ParentDashboard() {
   }
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView style={styles.container}>
       
       {/* =========================
@@ -211,7 +346,13 @@ export default function ParentDashboard() {
           </View>
         ) : (
           data.children.map((child: any) => (
-            <ChildCard key={child.userId} child={child} reload={load} />
+            <ChildCard
+              key={child.userId}
+              child={child}
+              reload={load}
+              onImportAnki={() => handleImportAnki(child.userId, child.name || "child")}
+              onImportExcel={() => handleImportExcel(child.userId, child.name || "child")}
+            />
           ))
         )}
       </View>
@@ -370,6 +511,69 @@ export default function ParentDashboard() {
         </View>
       )}
     </ScrollView>
+
+    {/* ANKI FIELD MAPPING MODAL */}
+    <Modal
+      visible={importType === "anki"}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={resetImportState}
+    >
+      <AnkiFieldModal
+        title="Map Card Fields"
+        subtitle={ankiPreview ? `${ankiPreview.totalNotes} notes → ${importTarget?.name}` : ""}
+        fields={ankiPreview?.modelSchemas?.[0]?.fields ?? []}
+        sample={ankiPreview?.samples?.[0] ?? []}
+        frontIndices={ankiFront}
+        backIndices={ankiBack}
+        audioIndex={ankiAudio}
+        onFrontToggle={(i) => setAnkiFront(toggleIndex(ankiFront, i))}
+        onBackToggle={(i) => setAnkiBack(toggleIndex(ankiBack, i))}
+        onAudioToggle={(i) => setAnkiAudio(ankiAudio === i ? null : i)}
+        deckName={ankiDeckName}
+        onDeckNameChange={setAnkiDeckName}
+        onConfirm={handleConfirmAnki}
+        confirmLabel="Import for Child"
+        onCancel={resetImportState}
+      />
+    </Modal>
+
+    {/* EXCEL FIELD MAPPING MODAL */}
+    <Modal
+      visible={importType === "excel"}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={resetImportState}
+    >
+      <AnkiFieldModal
+        title="Map Spreadsheet Columns"
+        subtitle={excelPreview ? `${excelPreview.totalNotes} rows → ${importTarget?.name}` : ""}
+        fields={excelPreview?.modelSchemas?.[0]?.fields ?? []}
+        sample={excelPreview?.samples?.[0] ?? []}
+        frontIndices={excelFront}
+        backIndices={excelBack}
+        audioIndex={null}
+        onFrontToggle={(i) => setExcelFront(toggleIndex(excelFront, i))}
+        onBackToggle={(i) => setExcelBack(toggleIndex(excelBack, i))}
+        onAudioToggle={() => {}}
+        deckName={excelDeckName}
+        onDeckNameChange={setExcelDeckName}
+        onConfirm={handleConfirmExcel}
+        confirmLabel="Import for Child"
+        onCancel={resetImportState}
+        showAudio={false}
+      />
+    </Modal>
+
+    {/* IMPORTING SPINNER */}
+    {deckImporting && (
+      <View style={styles.importOverlay}>
+        <ActivityIndicator size="large" color="#D86732" />
+        <Text style={{ color: "white", marginTop: 12, fontWeight: "700" }}>Importing deck...</Text>
+      </View>
+    )}
+
+    </View>
   );
 }
 
@@ -377,7 +581,15 @@ export default function ParentDashboard() {
    🔥 CHILD CARD
 ========================= */
 
-function ChildCard({ child, reload }: any) {
+const AFTER_SCHOOL_HOURS = [
+  { label: "12 PM", value: 12 },
+  { label: "1 PM", value: 13 },
+  { label: "2 PM", value: 14 },
+  { label: "3 PM", value: 15 },
+  { label: "4 PM", value: 16 },
+];
+
+function ChildCard({ child, reload, onImportAnki, onImportExcel }: any) {
   const [limit, setLimit] = useState(
     String(child.restrictions?.maxDailyMinutes || 60)
   );
@@ -388,6 +600,39 @@ function ChildCard({ child, reload }: any) {
     String(child.restrictions?.cardsRequired || 5)
   );
   const [mode, setMode] = useState(child.focusMode || "soft");
+  const [afterSchoolEnabled, setAfterSchoolEnabled] = useState(
+    Boolean(child.afterSchoolMode?.enabled)
+  );
+  const [afterSchoolHour, setAfterSchoolHour] = useState(
+    child.afterSchoolMode?.startHour ?? 14
+  );
+
+  // AI deck generation
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiDeckName, setAiDeckName] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiStatus, setAiStatus] = useState("");
+
+  async function handleGenerateAIDeck() {
+    if (!aiPrompt.trim()) return;
+    setAiGenerating(true);
+    setAiStatus("Generating...");
+    try {
+      await generateDeckForChild(
+        aiPrompt.trim(),
+        "basic",
+        aiDeckName.trim() || undefined,
+        child.userId,
+      );
+      setAiStatus("✅ Deck created for " + (child.name || "child"));
+      setAiPrompt("");
+      setAiDeckName("");
+    } catch {
+      setAiStatus("❌ Generation failed");
+    } finally {
+      setAiGenerating(false);
+    }
+  }
 
   async function save() {
     await updateChildRestrictions({
@@ -398,6 +643,10 @@ function ChildCard({ child, reload }: any) {
         cardsRequired: Number(cardsRequired),
       },
       focusMode: mode,
+      afterSchoolMode: {
+        enabled: afterSchoolEnabled,
+        startHour: afterSchoolHour,
+      },
     });
 
     reload();
@@ -478,6 +727,93 @@ function ChildCard({ child, reload }: any) {
             </Text>
           </Pressable>
         ))}
+      </View>
+
+      <View style={styles.afterSchoolSection}>
+        <View style={styles.afterSchoolHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.afterSchoolTitle}>After School Mode</Text>
+            <Text style={styles.afterSchoolDesc}>
+              Blocking and flashcards only activate after the chosen time
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setAfterSchoolEnabled((v) => !v)}
+            style={[
+              styles.afterSchoolToggle,
+              afterSchoolEnabled ? styles.toggleOn : styles.toggleOff,
+            ]}
+          >
+            <Text style={styles.toggleText}>
+              {afterSchoolEnabled ? "ON" : "OFF"}
+            </Text>
+          </Pressable>
+        </View>
+
+        {afterSchoolEnabled && (
+          <>
+            <Text style={styles.label}>Blocking starts at</Text>
+            <View style={styles.rowWrap}>
+              {AFTER_SCHOOL_HOURS.map((h) => (
+                <Pressable
+                  key={h.value}
+                  onPress={() => setAfterSchoolHour(h.value)}
+                  style={[
+                    styles.modeBtn,
+                    afterSchoolHour === h.value && styles.modeActive,
+                  ]}
+                >
+                  <Text style={{ color: afterSchoolHour === h.value ? "#111" : "#fff", fontWeight: "700" }}>
+                    {h.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
+      </View>
+
+      {/* ── DECK MANAGEMENT ── */}
+      <View style={styles.deckSection}>
+        <Text style={styles.deckSectionTitle}>Add Decks for {child.name || "Child"}</Text>
+
+        {/* AI Generate */}
+        <TextInput
+          value={aiDeckName}
+          onChangeText={setAiDeckName}
+          placeholder="Deck name (optional)"
+          placeholderTextColor="#555"
+          style={styles.input}
+        />
+        <TextInput
+          value={aiPrompt}
+          onChangeText={setAiPrompt}
+          placeholder="What should the deck be about?"
+          placeholderTextColor="#555"
+          multiline
+          numberOfLines={3}
+          style={[styles.input, { minHeight: 72, textAlignVertical: "top" }]}
+        />
+        <Pressable
+          style={[styles.deckBtn, (!aiPrompt.trim() || aiGenerating) && { opacity: 0.5 }]}
+          onPress={handleGenerateAIDeck}
+          disabled={!aiPrompt.trim() || aiGenerating}
+        >
+          <Text style={styles.deckBtnText}>
+            {aiGenerating ? "Generating..." : "Generate AI Deck"}
+          </Text>
+        </Pressable>
+        {!!aiStatus && <Text style={styles.deckStatus}>{aiStatus}</Text>}
+
+        {/* Import buttons */}
+        <View style={styles.importRow}>
+          <Pressable style={styles.importBtn} onPress={onImportAnki}>
+            <Text style={styles.importBtnText}>Import .apkg</Text>
+          </Pressable>
+          <Pressable style={styles.importBtn} onPress={onImportExcel}>
+            <Text style={styles.importBtnText}>Import .xlsx</Text>
+          </Pressable>
+        </View>
       </View>
 
       <Pressable style={styles.primaryBtn} onPress={save}>
@@ -701,5 +1037,102 @@ const styles = StyleSheet.create({
     color: "#fca5a5",
     fontSize: 12,
     lineHeight: 17,
+  },
+
+  afterSchoolSection: {
+    backgroundColor: "#151820",
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 14,
+  },
+
+  afterSchoolHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  afterSchoolTitle: {
+    color: "white",
+    fontWeight: "800",
+    fontSize: 14,
+  },
+
+  afterSchoolDesc: {
+    color: "#A9BDDB",
+    fontSize: 11,
+    marginTop: 2,
+  },
+
+  afterSchoolToggle: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    minWidth: 52,
+    alignItems: "center",
+  },
+
+  deckSection: {
+    backgroundColor: "#151820",
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 14,
+  },
+
+  deckSectionTitle: {
+    color: "#D86732",
+    fontWeight: "800",
+    fontSize: 13,
+    marginBottom: 10,
+  },
+
+  deckBtn: {
+    backgroundColor: "#D86732",
+    padding: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    marginTop: 8,
+  },
+
+  deckBtnText: {
+    color: "#111",
+    fontWeight: "800",
+    fontSize: 13,
+  },
+
+  deckStatus: {
+    color: "#A9BDDB",
+    fontSize: 12,
+    marginTop: 6,
+  },
+
+  importRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10,
+  },
+
+  importBtn: {
+    flex: 1,
+    backgroundColor: "#1b2540",
+    padding: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#2a2e36",
+  },
+
+  importBtnText: {
+    color: "white",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+
+  importOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 999,
   },
 });

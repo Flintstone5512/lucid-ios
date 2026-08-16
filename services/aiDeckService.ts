@@ -139,6 +139,91 @@ export async function importExcelDeck(
   return res.data;
 }
 
+/* =========================
+   🔥 PARENT DECK MANAGEMENT FOR CHILD
+========================= */
+
+export async function generateDeckForChild(
+  prompt: string,
+  cardType: CardType = "basic",
+  deckName: string | undefined,
+  targetChildId: string,
+) {
+  const form = new FormData();
+  form.append("type", "text");
+  form.append("prompt", prompt);
+  form.append("cardType", cardType);
+  if (deckName) form.append("deckName", deckName);
+  form.append("targetChildId", targetChildId);
+
+  const res = await api.post("/ai-deck/for-child", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 30000,
+  });
+
+  return res.data;
+}
+
+export async function importAnkiDeckForChild(
+  file: { uri: string; name: string; mimeType?: string },
+  frontFieldIndices: number[] = [0],
+  backFieldIndices: number[]  = [1],
+  audioFieldIndex: number | null = null,
+  deckName: string | undefined,
+  targetChildId: string,
+) {
+  const form = new FormData();
+
+  form.append("file", {
+    uri: file.uri,
+    name: file.name || "deck.apkg",
+    type: file.mimeType || "application/octet-stream",
+  } as any);
+
+  form.append("frontFieldIndices", JSON.stringify(frontFieldIndices));
+  form.append("backFieldIndices",  JSON.stringify(backFieldIndices));
+  if (audioFieldIndex != null) {
+    form.append("audioFieldIndex", String(audioFieldIndex));
+  }
+  if (deckName) form.append("deckName", deckName);
+  form.append("targetChildId", targetChildId);
+
+  const res = await api.post("/import/apkg/for-child", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 90000,
+  });
+
+  return res.data;
+}
+
+export async function importExcelDeckForChild(
+  file: { uri: string; name: string; mimeType?: string },
+  frontFieldIndices: number[] = [0],
+  backFieldIndices: number[]  = [1],
+  deckName: string | undefined,
+  targetChildId: string,
+) {
+  const form = new FormData();
+
+  form.append("file", {
+    uri: file.uri,
+    name: file.name || "deck.xlsx",
+    type: file.mimeType || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  } as any);
+
+  form.append("frontFieldIndices", JSON.stringify(frontFieldIndices));
+  form.append("backFieldIndices",  JSON.stringify(backFieldIndices));
+  if (deckName) form.append("deckName", deckName);
+  form.append("targetChildId", targetChildId);
+
+  const res = await api.post("/import/xlsx/for-child", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 90000,
+  });
+
+  return res.data;
+}
+
 export async function remapDeckFields(
   deckId: string,
   frontFieldIndices: number[],

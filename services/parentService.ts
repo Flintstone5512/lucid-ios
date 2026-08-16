@@ -23,6 +23,10 @@ export async function updateChildRestrictions(payload: {
     blockedSites?: string[];
   };
   focusMode?: "off" | "soft" | "strict";
+  afterSchoolMode?: {
+    enabled: boolean;
+    startHour: number;
+  };
 }) {
   const res = await api.put("/parent/children/restrictions", payload);
   return res.data;

@@ -2,6 +2,18 @@ import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Audio, Video, ResizeMode, InterruptionModeIOS, InterruptionModeAndroid } from "expo-av";
+import { GestureDetector, Gesture } from "react-native-gesture-handler";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  runOnJS,
+  interpolate,
+  Extrapolation,
+} from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type MediaRef = { type: "image" | "audio" | "video"; url: string };
 
@@ -55,6 +67,216 @@ function CardContent({
   );
 }
 
+const X_THRESHOLD = 100;
+const Y_THRESHOLD = 80;
+
+function SwipeableCard({
+  showAnswer,
+  onShowAnswer,
+  onGrade,
+  children,
+}: {
+  showAnswer: boolean;
+  onShowAnswer: () => void;
+  onGrade: (rating: string) => void;
+  children: React.ReactNode;
+}) {
+  const tx = useSharedValue(0);
+  const ty = useSharedValue(0);
+  const hapticFired = useSharedValue(false);
+
+  function fireHaptic() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+  }
+
+  const tap = Gesture.Tap()
+    .enabled(!showAnswer)
+    .onEnd(() => {
+      runOnJS(onShowAnswer)();
+    });
+
+  const pan = Gesture.Pan()
+    .enabled(showAnswer)
+    .minDistance(5)
+    .onUpdate((e) => {
+      tx.value = e.translationX;
+      ty.value = e.translationY;
+      const xDom = Math.abs(e.translationX) >= Math.abs(e.translationY);
+      const overX = xDom && Math.abs(e.translationX) > X_THRESHOLD;
+      const overY = !xDom && e.translationY < -Y_THRESHOLD;
+      if ((overX || overY) && !hapticFired.value) {
+        hapticFired.value = true;
+        runOnJS(fireHaptic)();
+      } else if (!overX && !overY) {
+        hapticFired.value = false;
+      }
+    })
+    .onEnd((e) => {
+      const xDom = Math.abs(e.translationX) >= Math.abs(e.translationY);
+      const overX = xDom && Math.abs(e.translationX) > X_THRESHOLD;
+      const overY = !xDom && e.translationY < -Y_THRESHOLD;
+      if (overX) {
+        tx.value = withTiming(e.translationX > 0 ? 600 : -600, { duration: 200 });
+        runOnJS(onGrade)(e.translationX > 0 ? "easy" : "again");
+      } else if (overY) {
+        ty.value = withTiming(-800, { duration: 200 });
+        runOnJS(onGrade)("good");
+      } else {
+        tx.value = withSpring(0);
+        ty.value = withSpring(0);
+        hapticFired.value = false;
+      }
+    });
+
+  const composed = Gesture.Race(pan, tap);
+
+  const cardAnim = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: tx.value },
+      { translateY: ty.value },
+      { rotate: `${interpolate(tx.value, [-200, 0, 200], [-12, 0, 12], Extrapolation.CLAMP)}deg` },
+    ] as any,
+  }));
+
+  const easyAnim = useAnimatedStyle(() => {
+    const xDom = Math.abs(tx.value) >= Math.abs(ty.value);
+    return {
+      opacity: xDom
+        ? interpolate(tx.value, [30, X_THRESHOLD], [0, 1], Extrapolation.CLAMP)
+        : 0,
+    };
+  });
+
+  const againAnim = useAnimatedStyle(() => {
+    const xDom = Math.abs(tx.value) >= Math.abs(ty.value);
+    return {
+      opacity: xDom
+        ? interpolate(tx.value, [-30, -X_THRESHOLD], [0, 1], Extrapolation.CLAMP)
+        : 0,
+    };
+  });
+
+  const goodAnim = useAnimatedStyle(() => {
+    const yDom = Math.abs(ty.value) > Math.abs(tx.value);
+    return {
+      opacity: yDom
+        ? interpolate(ty.value, [-30, -Y_THRESHOLD], [0, 1], Extrapolation.CLAMP)
+        : 0,
+    };
+  });
+
+  return (
+    <GestureDetector gesture={composed}>
+      <Animated.View style={[swipeStyles.card, cardAnim]}>
+        {/* AGAIN — top left */}
+        <Animated.View style={[swipeStyles.gradeBadge, swipeStyles.againBadge, againAnim]}>
+          <Text style={[swipeStyles.badgeText, { color: "#ef4444" }]}>← AGAIN</Text>
+        </Animated.View>
+
+        {/* GOOD — top center */}
+        <Animated.View style={[swipeStyles.goodWrapper, goodAnim]}>
+          <View style={[swipeStyles.gradeBadge, swipeStyles.goodBadge]}>
+            <Text style={[swipeStyles.badgeText, { color: "#D86732" }]}>↑ GOOD</Text>
+          </View>
+        </Animated.View>
+
+        {/* EASY — top right */}
+        <Animated.View style={[swipeStyles.gradeBadge, swipeStyles.easyBadge, easyAnim]}>
+          <Text style={[swipeStyles.badgeText, { color: "#22c55e" }]}>EASY →</Text>
+        </Animated.View>
+
+        {/* Card content */}
+        <View style={swipeStyles.content}>{children}</View>
+
+        {/* Hint footer */}
+        {showAnswer ? (
+          <View style={swipeStyles.hintRow}>
+            <Text style={[swipeStyles.hint, { color: "#ef4444" }]}>← again</Text>
+            <Text style={[swipeStyles.hint, { color: "#D86732" }]}>↑ good</Text>
+            <Text style={[swipeStyles.hint, { color: "#22c55e" }]}>easy →</Text>
+          </View>
+        ) : (
+          <Text style={swipeStyles.tapHint}>tap to reveal</Text>
+        )}
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+
+const swipeStyles = StyleSheet.create({
+  card: {
+    flex: 1,
+    width: "100%",
+    backgroundColor: "#111827",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#1e2d45",
+    marginVertical: 12,
+    overflow: "hidden",
+  },
+  content: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  gradeBadge: {
+    position: "absolute",
+    top: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 2,
+    zIndex: 10,
+  },
+  againBadge: {
+    left: 20,
+    borderColor: "#ef4444",
+    backgroundColor: "rgba(239,68,68,0.1)",
+  },
+  easyBadge: {
+    right: 20,
+    borderColor: "#22c55e",
+    backgroundColor: "rgba(34,197,94,0.1)",
+  },
+  goodBadge: {
+    borderColor: "#D86732",
+    backgroundColor: "rgba(216,103,50,0.1)",
+  },
+  goodWrapper: {
+    position: "absolute",
+    top: 20,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 10,
+  },
+  badgeText: {
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  hintRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#1e2d45",
+  },
+  hint: {
+    fontSize: 12,
+    fontWeight: "600",
+    opacity: 0.7,
+  },
+  tapHint: {
+    color: "#4a5568",
+    fontSize: 13,
+    textAlign: "center",
+    paddingVertical: 14,
+  },
+});
+
 import { showRewardedAd } from "../services/adService";
 import { askAITutor } from "../services/aiDeckService";
 import api from "../services/api";
@@ -93,6 +315,7 @@ export default function SessionScreen() {
   const [tutorText, setTutorText] = useState("");
 
   const [policyMinutes, setPolicyMinutes] = useState(1);
+  const [swipeMode, setSwipeMode] = useState(true);
 
   const {
     selectedDeckId,
@@ -114,12 +337,25 @@ export default function SessionScreen() {
   }, [selectedDeckId, shuffleMode, shuffleDeckIdsKey]);
 
   useEffect(() => {
-  console.log("✅ SESSION SCREEN MOUNTED");
-  getSettings().then((res) => {
-    const mins = res.settings?.timerPolicy?.unlockMinutes;
-    if (mins && mins > 0) setPolicyMinutes(mins);
-  }).catch(() => {});
-}, []);
+    console.log("✅ SESSION SCREEN MOUNTED");
+    getSettings().then((res) => {
+      const mins = res.settings?.timerPolicy?.unlockMinutes;
+      if (mins && mins > 0) setPolicyMinutes(mins);
+    }).catch(() => {});
+    AsyncStorage.getItem("lucid_swipe_mode")
+      .then((val) => { if (val === "false") setSwipeMode(false); })
+      .catch(() => {});
+  }, []);
+
+  function toggleSwipeMode() {
+    const next = !swipeMode;
+    setSwipeMode(next);
+    AsyncStorage.setItem("lucid_swipe_mode", String(next)).catch(() => {});
+  }
+
+  function handleSwipeGrade(rating: string) {
+    setTimeout(() => answer(rating), 200);
+  }
 
   function fisherYatesShuffle(arr: any[]) {
     const a = [...arr];
@@ -191,11 +427,29 @@ export default function SessionScreen() {
 
       console.log("[SESSION] Cards loaded OK — starting session");
       setCards(safeCards);
-      setIndex(0);
       setShowAnswer(false);
       setCompleted(false);
       setUnlockData(null);
       setMicroReward("");
+
+      // Restore saved progress for this deck/shuffle config
+      try {
+        const saved = await AsyncStorage.getItem("lucid_session_progress");
+        if (saved) {
+          const { savedDeckId, savedShuffleKey, savedIndex } = JSON.parse(saved);
+          const currentKey = isShuffling ? shuffleDeckIdsKey : String(selectedDeckId);
+          const matchKey = isShuffling ? savedShuffleKey : savedDeckId;
+          if (currentKey === matchKey && savedIndex > 0 && savedIndex < safeCards.length) {
+            setIndex(savedIndex);
+          } else {
+            setIndex(0);
+          }
+        } else {
+          setIndex(0);
+        }
+      } catch {
+        setIndex(0);
+      }
     } catch (err: any) {
       console.error("[SESSION] load() FAILED:", err?.message, err?.response?.status, err?.response?.data);
     } finally {
@@ -286,6 +540,7 @@ export default function SessionScreen() {
 
   async function handleSessionEnd() {
     console.log("[SESSION] handleSessionEnd called");
+    AsyncStorage.removeItem("lucid_session_progress").catch(() => {});
     try {
       const completionRes = await api.post("/reviews/session/complete");
       const { showAd, expiresAt } = completionRes?.data || {};
@@ -471,7 +726,13 @@ export default function SessionScreen() {
     /* =========================
        🔁 NEXT CARD
     ========================= */
-    setIndex((prev) => prev + 1);
+    const nextIndex = index + 1;
+    AsyncStorage.setItem("lucid_session_progress", JSON.stringify({
+      savedDeckId: String(selectedDeckId),
+      savedShuffleKey: shuffleDeckIdsKey,
+      savedIndex: nextIndex,
+    })).catch(() => {});
+    setIndex(nextIndex);
     setShowAnswer(false);
 
   } catch (err: any) {
@@ -541,7 +802,10 @@ export default function SessionScreen() {
   if (!shuffleMode && !selectedDeckId) {
     return (
       <View style={styles.center}>
-        <Text style={{ color: "white" }}>Select a deck first.</Text>
+        <Text style={{ color: "white", marginBottom: 20, fontSize: 16 }}>Select a deck first.</Text>
+        <Pressable onPress={() => router.replace("/(tabs)")} style={styles.secondaryBtn}>
+          <Text style={styles.secondaryBtnText}>← Go to Dashboard</Text>
+        </Pressable>
       </View>
     );
   }
@@ -612,9 +876,14 @@ export default function SessionScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.topSection}>
-        <Text style={{ color: "#F8C373", marginBottom: 4 }}>
-          🔥 {streak?.currentStreak || 0} day streak
-        </Text>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <Text style={{ color: "#F8C373" }}>
+            🔥 {streak?.currentStreak || 0} day streak
+          </Text>
+          <Pressable onPress={toggleSwipeMode} style={styles.modeToggle}>
+            <Text style={styles.modeToggleText}>{swipeMode ? "✦ Swipe" : "⊞ Buttons"}</Text>
+          </Pressable>
+        </View>
 
         <Text style={{ color: "#A9BDDB", marginBottom: 6 }}>
           ⚡ XP: {usage?.xp || 0}
@@ -634,54 +903,90 @@ export default function SessionScreen() {
         </Text>
       </View>
 
-      <View style={styles.centerSection}>
-        <CardContent text={card.front} media={card.frontMedia} textStyle={styles.cardFront} onPlayAudio={playAudio} isPlayingAudio={isPlayingAudio} />
-
-        {!!microReward && (
-          <Text style={styles.microReward}>{microReward}</Text>
-        )}
-
-        {showAnswer && (
-          <CardContent text={card.back} media={card.backMedia} textStyle={styles.cardBack} onPlayAudio={playAudio} isPlayingAudio={isPlayingAudio} />
-        )}
-
-        <Pressable onPress={openTutor} style={styles.tutorBtn}>
-          <Text style={styles.tutorBtnText}>🤖 AI Tutor</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.bottomSection}>
-        {!showAnswer ? (
-          <Pressable
-            onPress={() => setShowAnswer(true)}
-            style={styles.secondaryBtn}
+      {swipeMode ? (
+        <>
+          <SwipeableCard
+            key={index}
+            showAnswer={showAnswer}
+            onShowAnswer={() => setShowAnswer(true)}
+            onGrade={handleSwipeGrade}
           >
-            <Text style={styles.secondaryBtnText}>Show Answer</Text>
+            <CardContent
+              text={card.front}
+              media={card.frontMedia}
+              textStyle={styles.cardFront}
+              onPlayAudio={playAudio}
+              isPlayingAudio={isPlayingAudio}
+            />
+            {!!microReward && (
+              <Text style={styles.microReward}>{microReward}</Text>
+            )}
+            {showAnswer && (
+              <CardContent
+                text={card.back}
+                media={card.backMedia}
+                textStyle={styles.cardBack}
+                onPlayAudio={playAudio}
+                isPlayingAudio={isPlayingAudio}
+              />
+            )}
+          </SwipeableCard>
+          <Pressable onPress={openTutor} style={[styles.tutorBtn, { marginBottom: 12 }]}>
+            <Text style={styles.tutorBtnText}>🤖 AI Tutor</Text>
           </Pressable>
-        ) : (
-          <>
-            {["again", "good", "easy"].map((r) => (
+        </>
+      ) : (
+        <>
+          <View style={styles.centerSection}>
+            <CardContent text={card.front} media={card.frontMedia} textStyle={styles.cardFront} onPlayAudio={playAudio} isPlayingAudio={isPlayingAudio} />
+
+            {!!microReward && (
+              <Text style={styles.microReward}>{microReward}</Text>
+            )}
+
+            {showAnswer && (
+              <CardContent text={card.back} media={card.backMedia} textStyle={styles.cardBack} onPlayAudio={playAudio} isPlayingAudio={isPlayingAudio} />
+            )}
+
+            <Pressable onPress={openTutor} style={styles.tutorBtn}>
+              <Text style={styles.tutorBtnText}>🤖 AI Tutor</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.bottomSection}>
+            {!showAnswer ? (
               <Pressable
-                key={r}
-                onPress={() => answer(r)}
-                style={[
-                  styles.answerBtn,
-                  r === "good" && styles.answerGood,
-                ]}
+                onPress={() => setShowAnswer(true)}
+                style={styles.secondaryBtn}
               >
-                <Text
-                  style={[
-                    styles.answerText,
-                    r === "good" && { color: "#111" },
-                  ]}
-                >
-                  {r}
-                </Text>
+                <Text style={styles.secondaryBtnText}>Show Answer</Text>
               </Pressable>
-            ))}
-          </>
-        )}
-      </View>
+            ) : (
+              <>
+                {["again", "good", "easy"].map((r) => (
+                  <Pressable
+                    key={r}
+                    onPress={() => answer(r)}
+                    style={[
+                      styles.answerBtn,
+                      r === "good" && styles.answerGood,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.answerText,
+                        r === "good" && { color: "#111" },
+                      ]}
+                    >
+                      {r}
+                    </Text>
+                  </Pressable>
+                ))}
+              </>
+            )}
+          </View>
+        </>
+      )}
 
       {/* AI TUTOR MODAL */}
       <Modal
@@ -887,6 +1192,19 @@ const styles = StyleSheet.create({
   tutorBtnText: {
     color: "#A9BDDB",
     fontSize: 13,
+    fontWeight: "600",
+  },
+
+  modeToggle: {
+    backgroundColor: "#1b2540",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+
+  modeToggleText: {
+    color: "#A9BDDB",
+    fontSize: 12,
     fontWeight: "600",
   },
 
