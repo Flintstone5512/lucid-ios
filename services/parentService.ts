@@ -27,6 +27,10 @@ export async function updateChildRestrictions(payload: {
     enabled: boolean;
     startHour: number;
   };
+  cardPolicy?: {
+    dailyNewCards?: number;
+    maxReviewsPerDay?: number;
+  };
 }) {
   const res = await api.put("/parent/children/restrictions", payload);
   return res.data;

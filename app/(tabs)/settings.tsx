@@ -336,6 +336,39 @@ export default function SettingsScreen() {
         />
       </View>
 
+      {/* CARD LIMITS */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Card Limits</Text>
+
+        <SettingRow
+          label="New Cards per Day"
+          value={settings.cardPolicy?.dailyNewCards}
+          onChange={(v: string) =>
+            setSettings({
+              ...settings,
+              cardPolicy: {
+                ...settings.cardPolicy,
+                dailyNewCards: Number(v),
+              },
+            })
+          }
+        />
+
+        <SettingRow
+          label="Max Reviews per Day"
+          value={settings.cardPolicy?.maxReviewsPerDay}
+          onChange={(v: string) =>
+            setSettings({
+              ...settings,
+              cardPolicy: {
+                ...settings.cardPolicy,
+                maxReviewsPerDay: Number(v),
+              },
+            })
+          }
+        />
+      </View>
+
       {/* SAVE */}
       <Pressable onPress={save} style={styles.saveBtn}>
         <Text style={styles.saveText}>

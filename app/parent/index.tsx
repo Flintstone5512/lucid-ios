@@ -599,6 +599,12 @@ function ChildCard({ child, reload, onImportAnki, onImportExcel }: any) {
   const [cardsRequired, setCardsRequired] = useState(
     String(child.restrictions?.cardsRequired || 5)
   );
+  const [dailyNewCards, setDailyNewCards] = useState(
+    String(child.restrictions?.dailyNewCards || 20)
+  );
+  const [maxReviewsPerDay, setMaxReviewsPerDay] = useState(
+    String(child.restrictions?.maxReviewsPerDay || 200)
+  );
   const [mode, setMode] = useState(child.focusMode || "soft");
   const [afterSchoolEnabled, setAfterSchoolEnabled] = useState(
     Boolean(child.afterSchoolMode?.enabled)
@@ -646,6 +652,10 @@ function ChildCard({ child, reload, onImportAnki, onImportExcel }: any) {
       afterSchoolMode: {
         enabled: afterSchoolEnabled,
         startHour: afterSchoolHour,
+      },
+      cardPolicy: {
+        dailyNewCards: Number(dailyNewCards),
+        maxReviewsPerDay: Number(maxReviewsPerDay),
       },
     });
 
@@ -706,6 +716,24 @@ function ChildCard({ child, reload, onImportAnki, onImportExcel }: any) {
       <TextInput
         value={cardsRequired}
         onChangeText={setCardsRequired}
+        keyboardType="numeric"
+        style={styles.input}
+      />
+
+      <Text style={styles.label}>Daily New Cards</Text>
+
+      <TextInput
+        value={dailyNewCards}
+        onChangeText={setDailyNewCards}
+        keyboardType="numeric"
+        style={styles.input}
+      />
+
+      <Text style={styles.label}>Max Reviews per Day</Text>
+
+      <TextInput
+        value={maxReviewsPerDay}
+        onChangeText={setMaxReviewsPerDay}
         keyboardType="numeric"
         style={styles.input}
       />
