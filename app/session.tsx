@@ -17,6 +17,24 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type MediaRef = { type: "image" | "audio" | "video"; url: string };
 
+function cleanCardText(raw: string): string {
+  if (!raw) return "";
+  return raw
+    // Strip HTML tags
+    .replace(/<[^>]*>/g, "")
+    // Decode common HTML entities
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&[a-z]+;/gi, " ")
+    .trim();
+}
+
 function CardContent({
   text,
   media,
@@ -55,7 +73,7 @@ function CardContent({
           onError={(err) => console.error("[SESSION] video error", err)}
         />
       ))}
-      {!!text && <Text style={textStyle}>{text}</Text>}
+      {!!cleanCardText(text) && <Text style={textStyle}>{cleanCardText(text)}</Text>}
       {audios.map((m, i) => (
         <Pressable key={i} onPress={() => onPlayAudio(m.url)} style={styles.audioBtn}>
           <Text style={styles.audioBtnText}>
