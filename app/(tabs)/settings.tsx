@@ -179,6 +179,21 @@ export default function SettingsScreen() {
         )}
       </View>
 
+      {/* REFER A FRIEND */}
+      <Pressable
+        style={styles.referralCard}
+        onPress={() => router.push("/screens/ReferralScreen")}
+      >
+        <View style={styles.referralLeft}>
+          <Text style={styles.referralIcon}>🎁</Text>
+          <View>
+            <Text style={styles.referralTitle}>Refer a Friend</Text>
+            <Text style={styles.referralSub}>Give a month. Get a month.</Text>
+          </View>
+        </View>
+        <Text style={styles.referralArrow}>→</Text>
+      </Pressable>
+
       {/* iOS: re-select blocked apps */}
       {Platform.OS === "ios" && (
         <View style={styles.card}>
@@ -537,5 +552,45 @@ const styles = StyleSheet.create({
     color: "#FF6B6B",
     textAlign: "center",
     fontWeight: "700",
+  },
+
+  referralCard: {
+    backgroundColor: "#1b2540",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#D86732",
+  },
+
+  referralLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  referralIcon: {
+    fontSize: 28,
+  },
+
+  referralTitle: {
+    color: "white",
+    fontWeight: "800",
+    fontSize: 16,
+  },
+
+  referralSub: {
+    color: "#D86732",
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+
+  referralArrow: {
+    color: "#A9BDDB",
+    fontSize: 18,
   },
 });
