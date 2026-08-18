@@ -335,6 +335,17 @@ export default function SessionScreen() {
   const [policyMinutes, setPolicyMinutes] = useState(1);
   const [swipeMode, setSwipeMode] = useState(true);
 
+  // ── Challenge system ──
+  type ChallengeType = "speed" | "perfect" | "boss";
+  const [challengeType, setChallengeType] = useState<ChallengeType | null>(null);
+  const [challengeSelectVisible, setChallengeSelectVisible] = useState(false);
+  const [challengeChosen, setChallengeChosen] = useState(false);
+  const [sessionXPStart, setSessionXPStart] = useState(0);
+  const [consecutiveCorrect, setConsecutiveCorrect] = useState(0);
+  const [speedTimeLeft, setSpeedTimeLeft] = useState(30);
+  const speedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [sessionCardsAnswered, setSessionCardsAnswered] = useState(0);
+
   const {
     selectedDeckId,
     setStatePatch,
@@ -374,6 +385,47 @@ export default function SessionScreen() {
   function handleSwipeGrade(rating: string) {
     setTimeout(() => answer(rating), 200);
   }
+
+  function skipChallenge() {
+    setChallengeChosen(true);
+    setChallengeSelectVisible(false);
+    setSessionXPStart(usage?.xp ?? 0);
+  }
+
+  function startChallenge(type: ChallengeType) {
+    setChallengeType(type);
+    setChallengeChosen(true);
+    setChallengeSelectVisible(false);
+    setSessionXPStart(usage?.xp ?? 0);
+    if (type === "speed") {
+      setSpeedTimeLeft(30);
+      const interval = setInterval(() => {
+        setSpeedTimeLeft((prev) => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            speedTimerRef.current = null;
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      speedTimerRef.current = interval;
+    }
+  }
+
+  // Cleanup speed timer on unmount or completion
+  useEffect(() => {
+    return () => {
+      if (speedTimerRef.current) clearInterval(speedTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (completed && speedTimerRef.current) {
+      clearInterval(speedTimerRef.current);
+      speedTimerRef.current = null;
+    }
+  }, [completed]);
 
   function fisherYatesShuffle(arr: any[]) {
     const a = [...arr];
@@ -464,6 +516,19 @@ export default function SessionScreen() {
       setCompleted(false);
       setUnlockData(null);
       setMicroReward("");
+
+      // Reset challenge state and show challenge select
+      if (speedTimerRef.current) {
+        clearInterval(speedTimerRef.current);
+        speedTimerRef.current = null;
+      }
+      setChallengeType(null);
+      setChallengeChosen(false);
+      setConsecutiveCorrect(0);
+      setSessionCardsAnswered(0);
+      setSpeedTimeLeft(30);
+      setSessionXPStart(0);
+      setChallengeSelectVisible(true);
 
       // Restore saved progress for this deck/shuffle config
       try {
@@ -705,6 +770,16 @@ export default function SessionScreen() {
     setMicroReward("+1");
     setTimeout(() => setMicroReward(""), 500);
 
+    // Challenge progress tracking
+    setSessionCardsAnswered((n) => n + 1);
+    if (challengeType === "perfect") {
+      if (rating !== "again") {
+        setConsecutiveCorrect((n) => n + 1);
+      } else {
+        setConsecutiveCorrect(0);
+      }
+    }
+
     /* =========================
        🔥 COOLDOWN
     ========================= */
@@ -892,33 +967,150 @@ export default function SessionScreen() {
 
   if (completed) {
     const minutes = unlockData?.unlockMinutes || 10;
+    const xpEarned = Math.max(0, (usage?.xp ?? 0) - sessionXPStart);
+    const isBoss = challengeType === "boss";
+    const isPerfect = challengeType === "perfect";
+    const isSpeed = challengeType === "speed";
+
+    // Derive challenge outcome label
+    const challengeLabel = (() => {
+      if (!challengeType) return null;
+      if (isSpeed) return speedTimeLeft > 0 ? "⚡ Speed Run Complete!" : "⏱️ Speed Challenge";
+      if (isPerfect) return consecutiveCorrect >= 3 ? "🎯 Perfect Run!" : "💪 Good Effort";
+      if (isBoss) return "⚔️ Boss Defeated!";
+      return null;
+    })();
+
+    // XP display: boss challenge shows 2× bonus
+    const displayXP = isBoss ? xpEarned * 2 || sessionCardsAnswered * 20 : xpEarned || sessionCardsAnswered * 10;
 
     return (
-      <View style={styles.center}>
-        <Text style={{ fontSize: 44 }}>🔓</Text>
+      <View style={styles.questComplete}>
+        {/* ── Glow top ── */}
+        <View style={styles.questGlow} />
 
-        <Text style={styles.rewardTitle}>Apps Unlocked!</Text>
+        <Text style={styles.questUnlockIcon}>🔓</Text>
 
-        <Text style={styles.rewardSub}>
-          You earned {minutes} minutes.{"\n"}Most people scroll. You progressed.
-        </Text>
+        <Text style={styles.questTitle}>QUEST COMPLETE</Text>
 
-        <Text style={[styles.rewardSub, { marginTop: 24, color: "#6b7a99" }]}>
-          Press the Home button to return to your app.
+        {challengeLabel && (
+          <View style={styles.questChallengeBadge}>
+            <Text style={styles.questChallengeBadgeText}>{challengeLabel}</Text>
+          </View>
+        )}
+
+        {/* ── Stats row ── */}
+        <View style={styles.questStatsRow}>
+          <View style={styles.questStat}>
+            <Text style={styles.questStatValue}>⚡ {displayXP > 0 ? `+${displayXP}` : sessionCardsAnswered * 10}</Text>
+            <Text style={styles.questStatLabel}>XP Earned{isBoss ? " (2×)" : ""}</Text>
+          </View>
+          <View style={styles.questStatDivider} />
+          <View style={styles.questStat}>
+            <Text style={styles.questStatValue}>🔥 {streak?.currentStreak || 0}</Text>
+            <Text style={styles.questStatLabel}>Day Streak</Text>
+          </View>
+          <View style={styles.questStatDivider} />
+          <View style={styles.questStat}>
+            <Text style={styles.questStatValue}>📱 +{minutes}m</Text>
+            <Text style={styles.questStatLabel}>Unlocked</Text>
+          </View>
+        </View>
+
+        {/* ── Cards completed ── */}
+        <View style={styles.questCardsRow}>
+          <Text style={styles.questCardsText}>
+            🃏 {sessionCardsAnswered || cards.length} cards reviewed
+            {isPerfect && consecutiveCorrect > 0 && ` · ${consecutiveCorrect} in a row 🎯`}
+          </Text>
+        </View>
+
+        <Text style={styles.questSub}>
+          Most people scroll. You leveled up.{"\n"}Press Home to return to your app.
         </Text>
 
         <Pressable
           onPress={() => router.replace("/(tabs)")}
-          style={[styles.secondaryBtn, { marginTop: 32 }]}
+          style={styles.questDashBtn}
         >
-          <Text style={styles.secondaryBtnText}>Go to Dashboard</Text>
+          <Text style={styles.questDashBtnText}>View Dashboard</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => router.push("/(tabs)/rewards")}
+          style={styles.questRewardsBtn}
+        >
+          <Text style={styles.questRewardsBtnText}>🎁 View Rewards</Text>
         </Pressable>
       </View>
     );
   }
 
+  // Challenge select labels
+  const CHALLENGES = [
+    {
+      type: "speed" as ChallengeType,
+      icon: "⚡",
+      title: "Speed Round",
+      desc: `${cards.length} cards · 30 seconds`,
+      color: "#eab308",
+    },
+    {
+      type: "perfect" as ChallengeType,
+      icon: "🎯",
+      title: "Perfect Run",
+      desc: "Get 3 correct in a row",
+      color: "#22c55e",
+    },
+    {
+      type: "boss" as ChallengeType,
+      icon: "⚔️",
+      title: "Boss Battle",
+      desc: `${cards.length} hard cards · 2× XP`,
+      color: "#D86732",
+    },
+  ];
+
   return (
     <View style={styles.container}>
+      {/* ── Challenge Select Modal ── */}
+      <Modal
+        visible={challengeSelectVisible && !challengeChosen}
+        transparent
+        animationType="fade"
+        onRequestClose={skipChallenge}
+      >
+        <View style={styles.challengeOverlay}>
+          <View style={styles.challengeSheet}>
+            <Text style={styles.challengeHeading}>Choose Your Challenge</Text>
+            <Text style={styles.challengeSub}>
+              🔥 {streak?.currentStreak || 0}-day streak · Level {Math.floor((usage?.xp || 0) / 100)}
+            </Text>
+
+            {CHALLENGES.map((ch) => (
+              <Pressable
+                key={ch.type}
+                style={[styles.challengeOption, { borderColor: ch.color + "55" }]}
+                onPress={() => startChallenge(ch.type)}
+              >
+                <Text style={styles.challengeOptionIcon}>{ch.icon}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.challengeOptionTitle}>{ch.title}</Text>
+                  <Text style={styles.challengeOptionDesc}>{ch.desc}</Text>
+                </View>
+                <View style={[styles.challengeOptionBadge, { backgroundColor: ch.color + "22", borderColor: ch.color }]}>
+                  <Text style={[styles.challengeOptionBadgeText, { color: ch.color }]}>Select</Text>
+                </View>
+              </Pressable>
+            ))}
+
+            <Pressable style={styles.challengeSkip} onPress={skipChallenge}>
+              <Text style={styles.challengeSkipText}>Skip — just review cards</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.topSection}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
           <Text style={{ color: "#F8C373" }}>
@@ -928,6 +1120,25 @@ export default function SessionScreen() {
             <Text style={styles.modeToggleText}>{swipeMode ? "✦ Swipe" : "⊞ Buttons"}</Text>
           </Pressable>
         </View>
+
+        {/* Challenge indicator strip */}
+        {challengeType && (
+          <View style={styles.challengeStrip}>
+            {challengeType === "speed" && (
+              <Text style={[styles.challengeStripText, speedTimeLeft <= 10 && { color: "#ef4444" }]}>
+                ⚡ Speed Round · {speedTimeLeft}s
+              </Text>
+            )}
+            {challengeType === "perfect" && (
+              <Text style={styles.challengeStripText}>
+                🎯 Perfect Run · {consecutiveCorrect} in a row
+              </Text>
+            )}
+            {challengeType === "boss" && (
+              <Text style={styles.challengeStripText}>⚔️ Boss Battle · 2× XP</Text>
+            )}
+          </View>
+        )}
 
         <Text style={{ color: "#A9BDDB", marginBottom: 6 }}>
           ⚡ XP: {usage?.xp || 0}
@@ -1266,5 +1477,213 @@ const styles = StyleSheet.create({
     maxHeight: "70%",
     borderTopWidth: 1,
     borderColor: "#2a2e36",
+  },
+
+  // ── Challenge Select ──
+  challengeOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.75)",
+    padding: 20,
+  },
+  challengeSheet: {
+    backgroundColor: "#0f172a",
+    borderRadius: 24,
+    padding: 24,
+    width: "100%",
+    borderWidth: 1,
+    borderColor: "#2a3a5c",
+  },
+  challengeHeading: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  challengeSub: {
+    color: "#F8C373",
+    fontSize: 13,
+    textAlign: "center",
+    marginBottom: 20,
+    fontWeight: "600",
+  },
+  challengeOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#1b2540",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  challengeOptionIcon: {
+    fontSize: 28,
+  },
+  challengeOptionTitle: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  challengeOptionDesc: {
+    color: "#A9BDDB",
+    fontSize: 12,
+  },
+  challengeOptionBadge: {
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+  },
+  challengeOptionBadgeText: {
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  challengeSkip: {
+    alignItems: "center",
+    paddingTop: 8,
+  },
+  challengeSkipText: {
+    color: "#4a5568",
+    fontSize: 13,
+  },
+
+  // ── Challenge strip ──
+  challengeStrip: {
+    backgroundColor: "#1b2540",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 6,
+    alignSelf: "flex-start",
+  },
+  challengeStripText: {
+    color: "#ff8a3d",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+
+  // ── Quest Complete ──
+  questComplete: {
+    flex: 1,
+    backgroundColor: "#0e1424",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  questGlow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 200,
+    backgroundColor: "#D8673215",
+  },
+  questUnlockIcon: {
+    fontSize: 60,
+    marginBottom: 8,
+  },
+  questTitle: {
+    color: "#fff",
+    fontSize: 32,
+    fontWeight: "800",
+    letterSpacing: 2,
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  questChallengeBadge: {
+    backgroundColor: "#D8673222",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: "#D86732",
+  },
+  questChallengeBadgeText: {
+    color: "#D86732",
+    fontWeight: "800",
+    fontSize: 15,
+  },
+  questStatsRow: {
+    flexDirection: "row",
+    backgroundColor: "#1b2540",
+    borderRadius: 20,
+    width: "100%",
+    paddingVertical: 20,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    justifyContent: "space-around",
+    alignItems: "center",
+  },
+  questStat: {
+    alignItems: "center",
+    flex: 1,
+  },
+  questStatValue: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  questStatLabel: {
+    color: "#A9BDDB",
+    fontSize: 11,
+    textAlign: "center",
+  },
+  questStatDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: "#2a3a5c",
+  },
+  questCardsRow: {
+    backgroundColor: "#1b2540",
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginBottom: 24,
+    width: "100%",
+    alignItems: "center",
+  },
+  questCardsText: {
+    color: "#A9BDDB",
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  questSub: {
+    color: "#A9BDDB",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 28,
+  },
+  questDashBtn: {
+    backgroundColor: "#D86732",
+    borderRadius: 16,
+    padding: 18,
+    width: "100%",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  questDashBtnText: {
+    color: "#0B0B0F",
+    fontWeight: "800",
+    fontSize: 16,
+  },
+  questRewardsBtn: {
+    backgroundColor: "#1b2540",
+    borderRadius: 16,
+    padding: 16,
+    width: "100%",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#2a3a5c",
+  },
+  questRewardsBtnText: {
+    color: "#A9BDDB",
+    fontWeight: "700",
+    fontSize: 14,
   },
 });

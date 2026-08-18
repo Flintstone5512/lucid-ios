@@ -15,6 +15,10 @@ type RefocusState = {
 
   sessionCount: number;
 
+  // Rewards economy
+  coins: number;
+  skipPasses: number;
+
   unlockedUntil: number;
   selectedDeckId: string | null;
   enforcementMode: EnforcementMode;
@@ -30,6 +34,8 @@ type RefocusState = {
   setShuffleMode: (enabled: boolean) => void;
   toggleShuffleDeck: (deckId: string) => void;
   setShuffleDeckIds: (ids: string[]) => void;
+  setCoins: (coins: number) => void;
+  setSkipPasses: (count: number) => void;
 };
 
 export const useRefocusStore = create<RefocusState>((set) => ({
@@ -43,6 +49,9 @@ export const useRefocusStore = create<RefocusState>((set) => ({
   features: {},
 
   sessionCount: 0,
+
+  coins: 0,
+  skipPasses: 0,
 
   unlockedUntil: 0,
   selectedDeckId: null,
@@ -77,6 +86,10 @@ export const useRefocusStore = create<RefocusState>((set) => ({
 
   resetSessionCount: () =>
     set({ sessionCount: 0 }),
+
+  setCoins: (coins) => set({ coins }),
+
+  setSkipPasses: (count) => set({ skipPasses: count }),
 
   setStatePatch: (patch) =>
     set((state) => ({
