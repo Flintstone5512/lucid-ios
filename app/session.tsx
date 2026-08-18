@@ -297,7 +297,7 @@ const swipeStyles = StyleSheet.create({
 
 import { showRewardedAd } from "../services/adService";
 import { askAITutor } from "../services/aiDeckService";
-import api from "../services/api";
+import api, { getSharedState } from "../services/api";
 import { syncEnforcementDecision } from "../services/enforcementSync";
 import { scheduleMotivationalNotification } from "../services/motivationalNotificationService";
 import {
@@ -585,6 +585,12 @@ export default function SessionScreen() {
         setStatePatch({ unlockedUntil: expiresMs });
         console.log("[SESSION] unlockedUntil set to", expiresAt);
       }
+
+      // Refresh streak, XP, and usage in the global store so the session
+      // completion screen and any tab that reads from the store shows live values.
+      getSharedState()
+        .then((state) => setStatePatch({ ...state, context: state.context }))
+        .catch(() => {});
 
       // Schedule motivational notification for when the phone is idle later
       scheduleMotivationalNotification(
