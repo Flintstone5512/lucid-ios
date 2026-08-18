@@ -282,6 +282,11 @@ if (role === "parent" && tabs.length === 0) {
       </View>
 
       {/* =========================
+         🔥 TRENDS
+      ========================= */}
+      {data.trends && <TrendsCard trends={data.trends} />}
+
+      {/* =========================
          🔥 TREND
       ========================= */}
       <View style={styles.card}>
@@ -305,6 +310,167 @@ if (role === "parent" && tabs.length === 0) {
     </ScrollView>
   );
 }
+
+/* =========================
+   🔥 TRENDS CARD
+========================= */
+
+function directionIcon(direction: string, field: "wasted" | "good") {
+  if (direction === "same") return { icon: "→", color: "#A9BDDB" };
+  const isGood =
+    field === "wasted"
+      ? direction === "down"   // less wasted = good
+      : direction === "up";    // more cards/study = good
+  return {
+    icon: direction === "up" ? "↑" : "↓",
+    color: isGood ? "#4CAF50" : "#F44336",
+  };
+}
+
+function TrendRow({
+  label,
+  dayDelta,
+  weekDelta,
+  unit = "",
+  field = "good",
+}: {
+  label: string;
+  dayDelta: any;
+  weekDelta: any;
+  unit?: string;
+  field?: "wasted" | "good";
+}) {
+  const day = directionIcon(dayDelta?.direction || "same", field);
+  const week = directionIcon(weekDelta?.direction || "same", field);
+  const dayChange = Math.abs(dayDelta?.change || 0);
+  const weekChange = Math.abs(weekDelta?.change || 0);
+
+  return (
+    <View style={trendStyles.row}>
+      <Text style={trendStyles.label}>{label}</Text>
+      <View style={trendStyles.cols}>
+        <View style={trendStyles.col}>
+          <Text style={[trendStyles.arrow, { color: day.color }]}>
+            {day.icon}
+          </Text>
+          <Text style={trendStyles.change}>
+            {dayChange}{unit} vs yesterday
+          </Text>
+        </View>
+        <View style={trendStyles.col}>
+          <Text style={[trendStyles.arrow, { color: week.color }]}>
+            {week.icon}
+          </Text>
+          <Text style={trendStyles.change}>
+            {weekChange}{unit} vs last week
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function TrendsCard({ trends }: { trends: any }) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle}>Trends</Text>
+
+      <View style={trendStyles.avgRow}>
+        <Text style={trendStyles.avgLabel}>7-day avg:</Text>
+        <Text style={trendStyles.avgValue}>
+          {trends.weeklyAvg?.cardsReviewed ?? 0} cards
+        </Text>
+        <Text style={trendStyles.avgDivider}>·</Text>
+        <Text style={trendStyles.avgValue}>
+          {trends.weeklyAvg?.studyMinutes ?? 0}m study
+        </Text>
+        <Text style={trendStyles.avgDivider}>·</Text>
+        <Text style={trendStyles.avgValue}>
+          {trends.weeklyAvg?.wastedMinutes ?? 0}m wasted
+        </Text>
+      </View>
+
+      <TrendRow
+        label="Cards reviewed"
+        dayDelta={trends.dayOverDay?.cardsReviewed}
+        weekDelta={trends.weekOverWeek?.cardsReviewed}
+        field="good"
+      />
+      <TrendRow
+        label="Study time"
+        dayDelta={trends.dayOverDay?.studyMinutes}
+        weekDelta={trends.weekOverWeek?.studyMinutes}
+        unit="m"
+        field="good"
+      />
+      <TrendRow
+        label="Wasted time"
+        dayDelta={trends.dayOverDay?.wastedMinutes}
+        weekDelta={trends.weekOverWeek?.wastedMinutes}
+        unit="m"
+        field="wasted"
+      />
+    </View>
+  );
+}
+
+const trendStyles = StyleSheet.create({
+  avgRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 14,
+    backgroundColor: "#111d36",
+    borderRadius: 10,
+    padding: 10,
+  },
+  avgLabel: {
+    color: "#A9BDDB",
+    fontSize: 12,
+    marginRight: 2,
+  },
+  avgValue: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  avgDivider: {
+    color: "#A9BDDB",
+    fontSize: 12,
+  },
+  row: {
+    marginBottom: 12,
+  },
+  label: {
+    color: "#A9BDDB",
+    fontSize: 12,
+    marginBottom: 4,
+    fontWeight: "600",
+  },
+  cols: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  col: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#111d36",
+    borderRadius: 8,
+    padding: 8,
+  },
+  arrow: {
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  change: {
+    color: "white",
+    fontSize: 11,
+    flexShrink: 1,
+  },
+});
 
 /* =========================
    🔥 STYLES
