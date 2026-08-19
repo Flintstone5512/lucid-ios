@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Audio, Video, ResizeMode, InterruptionModeIOS, InterruptionModeAndroid } from "expo-av";
+import * as Speech from "expo-speech";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import Animated, {
   useSharedValue,
@@ -334,6 +335,7 @@ export default function SessionScreen() {
 
   const [policyMinutes, setPolicyMinutes] = useState(1);
   const [swipeMode, setSwipeMode] = useState(true);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
 
   // ── Challenge system ──
   type ChallengeType = "speed" | "perfect" | "boss";
@@ -345,6 +347,7 @@ export default function SessionScreen() {
   const [speedTimeLeft, setSpeedTimeLeft] = useState(30);
   const speedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [sessionCardsAnswered, setSessionCardsAnswered] = useState(0);
+  const [adPending, setAdPending] = useState(false);
 
   const {
     selectedDeckId,
@@ -374,12 +377,22 @@ export default function SessionScreen() {
     AsyncStorage.getItem("lucid_swipe_mode")
       .then((val) => { if (val === "false") setSwipeMode(false); })
       .catch(() => {});
+    AsyncStorage.getItem("lucid_tts_enabled")
+      .then((val) => { if (val === "true") setTtsEnabled(true); })
+      .catch(() => {});
   }, []);
 
   function toggleSwipeMode() {
     const next = !swipeMode;
     setSwipeMode(next);
     AsyncStorage.setItem("lucid_swipe_mode", String(next)).catch(() => {});
+  }
+
+  function toggleTts() {
+    const next = !ttsEnabled;
+    setTtsEnabled(next);
+    AsyncStorage.setItem("lucid_tts_enabled", String(next)).catch(() => {});
+    if (!next) Speech.stop();
   }
 
   function handleSwipeGrade(rating: string) {
@@ -571,30 +584,42 @@ export default function SessionScreen() {
   useEffect(() => {
     setStartTime(Date.now());
     setIsPlayingAudio(false);
+    Speech.stop();
     if (soundRef.current) {
       soundRef.current.unloadAsync();
       soundRef.current = null;
     }
   }, [index]);
 
-  // Autoplay front audio when card changes
+  // Autoplay front audio when card changes; fall back to TTS if no audio and TTS is enabled
   useEffect(() => {
     if (loading || !cards.length) return;
     const card = cards[index];
     const frontAudio = card?.frontMedia?.find((m: MediaRef) => m.type === "audio");
-    if (frontAudio) playAudio(frontAudio.url);
+    if (frontAudio) {
+      playAudio(frontAudio.url);
+    } else if (ttsEnabled) {
+      const text = cleanCardText(card?.front);
+      if (text) Speech.speak(text);
+    }
   }, [index, loading]);
 
-  // Autoplay back audio when answer is revealed
+  // Autoplay back audio when answer is revealed; fall back to TTS if no audio and TTS is enabled
   useEffect(() => {
     if (!showAnswer || !cards.length) return;
     const card = cards[index];
     const backAudio = card?.backMedia?.find((m: MediaRef) => m.type === "audio");
-    if (backAudio) playAudio(backAudio.url);
+    if (backAudio) {
+      playAudio(backAudio.url);
+    } else if (ttsEnabled) {
+      const text = cleanCardText(card?.back);
+      if (text) Speech.speak(text);
+    }
   }, [showAnswer]);
 
   useEffect(() => {
     return () => {
+      Speech.stop();
       if (soundRef.current) {
         soundRef.current.unloadAsync();
         soundRef.current = null;
@@ -669,11 +694,19 @@ export default function SessionScreen() {
 
       if (showAd) {
         console.log("[SESSION] showing rewarded ad");
-        showRewardedAd(async () => {
-          console.log("[SESSION] ad reward earned — reopening blocked app");
-          await reopenBlockedApp();
-          router.replace("/(tabs)");
-        });
+        setAdPending(true);
+        showRewardedAd(
+          async () => {
+            console.log("[SESSION] ad reward earned — reopening blocked app");
+            setAdPending(false);
+            await reopenBlockedApp();
+            router.replace("/(tabs)");
+          },
+          () => {
+            // Ad closed without reward — surface the fallback button
+            setAdPending(false);
+          }
+        );
         return;
       }
 
@@ -1029,19 +1062,29 @@ export default function SessionScreen() {
           Most people scroll. You leveled up.{"\n"}Press Home to return to your app.
         </Text>
 
-        <Pressable
-          onPress={() => router.replace("/(tabs)")}
-          style={styles.questDashBtn}
-        >
-          <Text style={styles.questDashBtnText}>View Dashboard</Text>
-        </Pressable>
+        {adPending ? (
+          <ActivityIndicator
+            size="small"
+            color="#D86732"
+            style={{ marginTop: 24 }}
+          />
+        ) : (
+          <>
+            <Pressable
+              onPress={() => router.replace("/(tabs)")}
+              style={styles.questDashBtn}
+            >
+              <Text style={styles.questDashBtnText}>View Dashboard</Text>
+            </Pressable>
 
-        <Pressable
-          onPress={() => router.push("/(tabs)/rewards")}
-          style={styles.questRewardsBtn}
-        >
-          <Text style={styles.questRewardsBtnText}>🎁 View Rewards</Text>
-        </Pressable>
+            <Pressable
+              onPress={() => router.push("/(tabs)/rewards")}
+              style={styles.questRewardsBtn}
+            >
+              <Text style={styles.questRewardsBtnText}>🎁 View Rewards</Text>
+            </Pressable>
+          </>
+        )}
       </View>
     );
   }
@@ -1116,9 +1159,14 @@ export default function SessionScreen() {
           <Text style={{ color: "#F8C373" }}>
             🔥 {streak?.currentStreak || 0} day streak
           </Text>
-          <Pressable onPress={toggleSwipeMode} style={styles.modeToggle}>
-            <Text style={styles.modeToggleText}>{swipeMode ? "✦ Swipe" : "⊞ Buttons"}</Text>
-          </Pressable>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <Pressable onPress={toggleTts} style={styles.modeToggle}>
+              <Text style={styles.modeToggleText}>{ttsEnabled ? "🔊" : "🔇"}</Text>
+            </Pressable>
+            <Pressable onPress={toggleSwipeMode} style={styles.modeToggle}>
+              <Text style={styles.modeToggleText}>{swipeMode ? "✦ Swipe" : "⊞ Buttons"}</Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* Challenge indicator strip */}

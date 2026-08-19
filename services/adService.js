@@ -18,7 +18,7 @@ const adUnitId = Platform.select({
   android: process.env.EXPO_PUBLIC_ADMOB_ANDROID_AD_UNIT || PROD_ANDROID_AD_UNIT,
 });
 
-export function showRewardedAd(onRewardEarned) {
+export function showRewardedAd(onRewardEarned, onClosed) {
   const rewarded = RewardedAd.createForAdRequest(adUnitId, {
     requestNonPersonalizedAdsOnly: true,
   });
@@ -49,7 +49,10 @@ export function showRewardedAd(onRewardEarned) {
 
   closedListener = rewarded.addAdEventListener(
     AdEventType.CLOSED,
-    () => cleanup()
+    () => {
+      cleanup();
+      if (onClosed) onClosed();
+    }
   );
 
   // If the ad fails to load, fall back so the user isn't stuck
