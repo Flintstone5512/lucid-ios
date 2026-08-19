@@ -474,6 +474,51 @@ export default function SessionScreen() {
     }
   }, [completed]);
 
+  // Blitz: per-card countdown — resets on each new card
+  useEffect(() => {
+    if (challengeType !== "blitz" || completed) return;
+
+    blitzExpectedIndexRef.current = index;
+    if (blitzTimerRef.current) clearInterval(blitzTimerRef.current);
+    setBlitzTimeLeft(3);
+    setBlitzExpired(false);
+
+    const interval = setInterval(() => {
+      setBlitzTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          blitzTimerRef.current = null;
+          setBlitzExpired(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    blitzTimerRef.current = interval;
+
+    return () => {
+      if (blitzTimerRef.current) {
+        clearInterval(blitzTimerRef.current);
+        blitzTimerRef.current = null;
+      }
+    };
+  }, [index, challengeType, completed]);
+
+  // Blitz: auto-grade "again" when timer expires, guarded against stale index
+  useEffect(() => {
+    if (!blitzExpired) return;
+    setBlitzExpired(false);
+    if (blitzExpectedIndexRef.current === index) {
+      answer("again");
+    }
+  }, [blitzExpired]);
+
+  function startNextMarathonRound() {
+    keepChallengeRef.current = true;
+    setMarathonRound((prev) => prev + 1);
+    load();
+  }
+
   function fisherYatesShuffle(arr: any[]) {
     const a = [...arr];
     for (let i = a.length - 1; i > 0; i--) {
@@ -569,13 +614,27 @@ export default function SessionScreen() {
         clearInterval(speedTimerRef.current);
         speedTimerRef.current = null;
       }
-      setChallengeType(null);
-      setChallengeChosen(false);
+      if (blitzTimerRef.current) {
+        clearInterval(blitzTimerRef.current);
+        blitzTimerRef.current = null;
+      }
       setConsecutiveCorrect(0);
       setSessionCardsAnswered(0);
-      setSpeedTimeLeft(30);
-      setSessionXPStart(0);
-      setChallengeSelectVisible(true);
+      if (keepChallengeRef.current) {
+        // Marathon round continuation — preserve challenge type/chosen state
+        keepChallengeRef.current = false;
+        setBlitzTimeLeft(3);
+        setBlitzExpired(false);
+      } else {
+        setChallengeType(null);
+        setChallengeChosen(false);
+        setSpeedTimeLeft(30);
+        setBlitzTimeLeft(3);
+        setBlitzExpired(false);
+        setSessionXPStart(0);
+        setMarathonRound(1);
+        setChallengeSelectVisible(true);
+      }
 
       // Restore saved progress for this deck/shuffle config
       try {
@@ -687,13 +746,21 @@ export default function SessionScreen() {
   useEffect(() => {
     if (!completed) return;
 
+    // Marathon: chain into the next round instead of ending the session
+    if (challengeType === "marathon" && marathonRound < MARATHON_TOTAL_ROUNDS) {
+      const timer = setTimeout(() => {
+        startNextMarathonRound();
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+
     console.log("[SESSION] completed=true — calling handleSessionEnd in 800ms");
     const timer = setTimeout(() => {
       handleSessionEnd();
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [completed]);
+  }, [completed, challengeType, marathonRound]);
 
   async function handleSessionEnd() {
     console.log("[SESSION] handleSessionEnd called");
@@ -839,6 +906,12 @@ export default function SessionScreen() {
 
     // Challenge progress tracking
     setSessionCardsAnswered((n) => n + 1);
+    // Clear blitz timer for this card — the user answered before it expired
+    if (blitzTimerRef.current) {
+      clearInterval(blitzTimerRef.current);
+      blitzTimerRef.current = null;
+    }
+    setBlitzExpired(false);
     if (challengeType === "perfect") {
       if (rating !== "again") {
         setConsecutiveCorrect((n) => n + 1);
@@ -1033,11 +1106,33 @@ export default function SessionScreen() {
   const card = cards[index];
 
   if (completed) {
+    // Marathon: show between-round screen while next round loads
+    if (challengeType === "marathon" && marathonRound < MARATHON_TOTAL_ROUNDS) {
+      const roundsLeft = MARATHON_TOTAL_ROUNDS - marathonRound;
+      return (
+        <View style={styles.questComplete}>
+          <View style={styles.questGlow} />
+          <Text style={styles.questUnlockIcon}>🏃</Text>
+          <Text style={styles.questTitle}>ROUND {marathonRound} DONE!</Text>
+          <View style={[styles.questChallengeBadge, { borderColor: "#6366f1" }]}>
+            <Text style={[styles.questChallengeBadgeText, { color: "#6366f1" }]}>
+              {roundsLeft} round{roundsLeft !== 1 ? "s" : ""} remaining
+            </Text>
+          </View>
+          <Text style={styles.questSub}>Keep pushing...</Text>
+          <ActivityIndicator color="#6366f1" style={{ marginTop: 24 }} />
+        </View>
+      );
+    }
+
     const minutes = unlockData?.unlockMinutes || 10;
     const xpEarned = Math.max(0, (usage?.xp ?? 0) - sessionXPStart);
     const isBoss = challengeType === "boss";
     const isPerfect = challengeType === "perfect";
     const isSpeed = challengeType === "speed";
+    const isWeakSpot = challengeType === "weakspot";
+    const isBlitz = challengeType === "blitz";
+    const isMarathon = challengeType === "marathon";
 
     // Derive challenge outcome label
     const challengeLabel = (() => {
@@ -1045,10 +1140,13 @@ export default function SessionScreen() {
       if (isSpeed) return speedTimeLeft > 0 ? "⚡ Speed Run Complete!" : "⏱️ Speed Challenge";
       if (isPerfect) return consecutiveCorrect >= 3 ? "🎯 Perfect Run!" : "💪 Good Effort";
       if (isBoss) return "⚔️ Boss Defeated!";
+      if (isWeakSpot) return "🧠 Weak Spots Crushed!";
+      if (isBlitz) return "⚡ Blitz Mode Complete!";
+      if (isMarathon) return "🏃 Marathon Finished!";
       return null;
     })();
 
-    // XP display: boss challenge shows 2× bonus
+    // XP display: boss challenge shows 2× bonus; marathon shows total across all rounds
     const displayXP = isBoss ? xpEarned * 2 || sessionCardsAnswered * 20 : xpEarned || sessionCardsAnswered * 10;
 
     return (
@@ -1089,6 +1187,7 @@ export default function SessionScreen() {
           <Text style={styles.questCardsText}>
             🃏 {sessionCardsAnswered || cards.length} cards reviewed
             {isPerfect && consecutiveCorrect > 0 && ` · ${consecutiveCorrect} in a row 🎯`}
+            {isMarathon && ` · ${MARATHON_TOTAL_ROUNDS} rounds`}
           </Text>
         </View>
 
@@ -1145,6 +1244,27 @@ export default function SessionScreen() {
       title: "Boss Battle",
       desc: `${cards.length} hard cards · 2× XP`,
       color: "#D86732",
+    },
+    {
+      type: "weakspot" as ChallengeType,
+      icon: "🧠",
+      title: "Weak Spot",
+      desc: "Your hardest cards first",
+      color: "#a855f7",
+    },
+    {
+      type: "blitz" as ChallengeType,
+      icon: "⏱️",
+      title: "Blitz Mode",
+      desc: `${cards.length} cards · 3 sec each`,
+      color: "#ef4444",
+    },
+    {
+      type: "marathon" as ChallengeType,
+      icon: "🏃",
+      title: "Marathon",
+      desc: `${MARATHON_TOTAL_ROUNDS} rounds · ${cards.length * MARATHON_TOTAL_ROUNDS} cards total`,
+      color: "#6366f1",
     },
   ];
 
@@ -1218,6 +1338,21 @@ export default function SessionScreen() {
             )}
             {challengeType === "boss" && (
               <Text style={styles.challengeStripText}>⚔️ Boss Battle · 2× XP</Text>
+            )}
+            {challengeType === "weakspot" && (
+              <Text style={[styles.challengeStripText, { color: "#a855f7" }]}>
+                🧠 Weak Spot · card {index + 1} of {cards.length}
+              </Text>
+            )}
+            {challengeType === "blitz" && (
+              <Text style={[styles.challengeStripText, blitzTimeLeft <= 1 && { color: "#ef4444" }]}>
+                ⏱️ Blitz · {blitzTimeLeft}s
+              </Text>
+            )}
+            {challengeType === "marathon" && (
+              <Text style={[styles.challengeStripText, { color: "#6366f1" }]}>
+                🏃 Marathon · Round {marathonRound}/{MARATHON_TOTAL_ROUNDS}
+              </Text>
             )}
           </View>
         )}
