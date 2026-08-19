@@ -7,6 +7,7 @@ import {
   StyleSheet,
 } from "react-native";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getSettings, updateSettings } from "../../services/settingsService";
 import SettingRow from "../../components/SettingRow";
 import { useRefocusStore } from "../../store/useRefocusStore";
@@ -26,6 +27,7 @@ import { Platform } from "react-native";
 export default function SettingsScreen() {
   const [settings, setSettings] = useState<any>(null);
   const [saving, setSaving] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
 
   const { plan, adMode, context } = useRefocusStore();
   const [adModeLoading, setAdModeLoading] = useState(false);
@@ -33,7 +35,16 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     load();
+    AsyncStorage.getItem("lucid_tts_enabled")
+      .then((val) => { if (val === "true") setTtsEnabled(true); })
+      .catch(() => {});
   }, []);
+
+  async function toggleTts() {
+    const next = !ttsEnabled;
+    setTtsEnabled(next);
+    AsyncStorage.setItem("lucid_tts_enabled", String(next)).catch(() => {});
+  }
 
   async function load() {
     try {
@@ -382,6 +393,25 @@ export default function SettingsScreen() {
             })
           }
         />
+      </View>
+
+      {/* READ ALOUD (TTS) */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Read Aloud</Text>
+        <Text style={{ color: "#A9BDDB", marginBottom: 12, fontSize: 13 }}>
+          Speak flashcard text using text-to-speech. Automatically skipped on cards that already have audio.
+        </Text>
+        <Pressable
+          onPress={toggleTts}
+          style={[
+            styles.bigToggle,
+            ttsEnabled ? styles.toggleOn : styles.toggleOff,
+          ]}
+        >
+          <Text style={styles.toggleText}>
+            {ttsEnabled ? "🔊 Read Aloud ON" : "🔇 Read Aloud OFF"}
+          </Text>
+        </Pressable>
       </View>
 
       {/* SAVE */}

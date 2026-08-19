@@ -1,6 +1,6 @@
 import api from "./api";
 
-export type ChallengeType = "speed" | "perfect" | "boss";
+export type ChallengeType = "speed" | "perfect" | "boss" | "weakspot" | "blitz" | "marathon";
 
 export type StreakMilestone = {
   day: number;

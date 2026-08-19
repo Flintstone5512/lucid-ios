@@ -338,7 +338,8 @@ export default function SessionScreen() {
   const [ttsEnabled, setTtsEnabled] = useState(false);
 
   // ── Challenge system ──
-  type ChallengeType = "speed" | "perfect" | "boss";
+  type ChallengeType = "speed" | "perfect" | "boss" | "weakspot" | "blitz" | "marathon";
+  const MARATHON_TOTAL_ROUNDS = 3;
   const [challengeType, setChallengeType] = useState<ChallengeType | null>(null);
   const [challengeSelectVisible, setChallengeSelectVisible] = useState(false);
   const [challengeChosen, setChallengeChosen] = useState(false);
@@ -348,6 +349,14 @@ export default function SessionScreen() {
   const speedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [sessionCardsAnswered, setSessionCardsAnswered] = useState(0);
   const [adPending, setAdPending] = useState(false);
+  // Blitz challenge
+  const [blitzTimeLeft, setBlitzTimeLeft] = useState(3);
+  const blitzTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [blitzExpired, setBlitzExpired] = useState(false);
+  const blitzExpectedIndexRef = useRef(-1);
+  // Marathon challenge
+  const [marathonRound, setMarathonRound] = useState(1);
+  const keepChallengeRef = useRef(false);
 
   const {
     selectedDeckId,
@@ -424,19 +433,44 @@ export default function SessionScreen() {
       }, 1000);
       speedTimerRef.current = interval;
     }
+    if (type === "weakspot") {
+      // Sort loaded cards by weakest first: lowest easeFactor, then most lapses
+      setCards((prev) =>
+        [...prev].sort((a, b) => {
+          const easeDiff = (a.easeFactor ?? 2.5) - (b.easeFactor ?? 2.5);
+          if (easeDiff !== 0) return easeDiff;
+          return (b.lapses ?? 0) - (a.lapses ?? 0);
+        })
+      );
+    }
+    if (type === "blitz") {
+      setBlitzTimeLeft(3);
+      setBlitzExpired(false);
+    }
+    if (type === "marathon") {
+      setMarathonRound(1);
+    }
   }
 
-  // Cleanup speed timer on unmount or completion
+  // Cleanup speed + blitz timers on unmount or completion
   useEffect(() => {
     return () => {
       if (speedTimerRef.current) clearInterval(speedTimerRef.current);
+      if (blitzTimerRef.current) clearInterval(blitzTimerRef.current);
     };
   }, []);
 
   useEffect(() => {
-    if (completed && speedTimerRef.current) {
-      clearInterval(speedTimerRef.current);
-      speedTimerRef.current = null;
+    if (completed) {
+      if (speedTimerRef.current) {
+        clearInterval(speedTimerRef.current);
+        speedTimerRef.current = null;
+      }
+      if (blitzTimerRef.current) {
+        clearInterval(blitzTimerRef.current);
+        blitzTimerRef.current = null;
+      }
+      setBlitzExpired(false);
     }
   }, [completed]);
 
