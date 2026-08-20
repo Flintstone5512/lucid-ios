@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,6 +21,8 @@ export default function AnalyticsScreen() {
   const [parentDashboard, setParentDashboard] = useState<any>(null);
   const [children, setChildren] = useState<any[]>([]);
   const [selectedTabIndex, setSelectedTabIndex] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const { context } = useRefocusStore();
   const role = context?.role || "solo";
@@ -31,14 +34,28 @@ export default function AnalyticsScreen() {
   );
 
   async function load() {
-    const res = await getAnalyticsDashboard();
+    setLoadError(false);
+    try {
+      const res = await getAnalyticsDashboard();
+      console.log("[ANALYTICS] raw response:", JSON.stringify(res).slice(0, 300));
 
-    if (role === "parent") {
-      setChildren(res.children || []);
-      if (res.dashboard) setParentDashboard(res.dashboard);
-    } else {
-      setDashboard(res.dashboard);
+      if (role === "parent") {
+        setChildren(res.children || []);
+        // Accept both { dashboard: {...} } and flat { currentStreak, ... }
+        setParentDashboard(res.dashboard ?? res);
+      } else {
+        setDashboard(res.dashboard ?? res);
+      }
+    } catch (err: any) {
+      console.error("[ANALYTICS] load failed:", err?.message, err?.response?.status, err?.response?.data);
+      setLoadError(true);
     }
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
   }
 
   /* =========================
@@ -59,8 +76,11 @@ export default function AnalyticsScreen() {
 // 🔥 EMPTY STATE (PARENT — NO CHILDREN, NO SELF DATA)
 if (role === "parent" && tabs.length === 0) {
   return (
-    <ScrollView style={styles.container}>
-      
+    <ScrollView
+      style={styles.container}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#D86732" />}
+    >
+
       {/* =========================
          🔥 HEADER
       ========================= */}
@@ -155,6 +175,28 @@ if (role === "parent" && tabs.length === 0) {
     </ScrollView>
   );
 }
+  if (loadError) {
+    return (
+      <View style={styles.center}>
+        <Text style={[styles.loading, { marginBottom: 16 }]}>Failed to load analytics.</Text>
+        <Pressable onPress={load} style={{ backgroundColor: "#D86732", padding: 14, borderRadius: 12 }}>
+          <Text style={{ color: "#111", fontWeight: "800" }}>Try Again</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <View style={styles.center}>
+        <Text style={[styles.loading, { marginBottom: 16 }]}>Failed to load analytics.</Text>
+        <Pressable onPress={load} style={{ backgroundColor: "#D86732", padding: 14, borderRadius: 12 }}>
+          <Text style={{ color: "#111", fontWeight: "800" }}>Try Again</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   if (!data) {
     return (
       <View style={styles.center}>
@@ -169,8 +211,11 @@ if (role === "parent" && tabs.length === 0) {
   );
 
   return (
-    <ScrollView style={styles.container}>
-      
+    <ScrollView
+      style={styles.container}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#D86732" />}
+    >
+
       {/* =========================
          🔥 HEADER
       ========================= */}
