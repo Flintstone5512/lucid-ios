@@ -5,6 +5,7 @@ import {
   Pressable,
   View,
   StyleSheet,
+  ActivityIndicator,
 } from "react-native";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -23,11 +24,20 @@ import { syncSettings as syncScreenTimeSettings, applyShield, clearShield, setDa
 import { startMonitoringBlockedApps, scheduleBlockNotification } from "../../services/nativeBridge";
 import { cancelGuiltNotifications, scheduleGuiltNotifications } from "../../services/motivationalNotificationService";
 import { Platform } from "react-native";
+import {
+  isSmartBlockingEnabled,
+  setSmartBlockingEnabled,
+  computeSmartBlockingPolicy,
+  SmartBlockingResult,
+} from "../../services/smartBlockingService";
 
 export default function SettingsScreen() {
   const [settings, setSettings] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [smartBlocking, setSmartBlocking] = useState(false);
+  const [smartPolicy, setSmartPolicy] = useState<SmartBlockingResult | null>(null);
+  const [smartLoading, setSmartLoading] = useState(false);
 
   const { plan, adMode, context } = useRefocusStore();
   const [adModeLoading, setAdModeLoading] = useState(false);
@@ -38,12 +48,80 @@ export default function SettingsScreen() {
     AsyncStorage.getItem("lucid_tts_enabled")
       .then((val) => { if (val === "true") setTtsEnabled(true); })
       .catch(() => {});
+    isSmartBlockingEnabled()
+      .then((enabled) => setSmartBlocking(enabled))
+      .catch(() => {});
   }, []);
 
   async function toggleTts() {
     const next = !ttsEnabled;
     setTtsEnabled(next);
     AsyncStorage.setItem("lucid_tts_enabled", String(next)).catch(() => {});
+  }
+
+  async function toggleSmartBlocking() {
+    const next = !smartBlocking;
+    setSmartBlocking(next);
+    await setSmartBlockingEnabled(next).catch(() => {});
+
+    if (next) {
+      setSmartLoading(true);
+      try {
+        const policy = await computeSmartBlockingPolicy(settings);
+        setSmartPolicy(policy);
+
+        // Push computed values into settings state so save() picks them up
+        setSettings((prev: any) => ({
+          ...prev,
+          timerPolicy: {
+            ...prev.timerPolicy,
+            cardsRequired: policy.cardsRequired,
+            unlockMinutes: policy.unlockMinutes,
+          },
+        }));
+
+        // Immediately persist to backend so enforcement reflects the new policy
+        await updateSettings({
+          timerPolicy: {
+            cardsRequired: policy.cardsRequired,
+            unlockMinutes: policy.unlockMinutes,
+            maxUnlockPerDay: settings.timerPolicy?.maxUnlockPerDay ?? 120,
+          },
+        }).catch(() => {});
+      } finally {
+        setSmartLoading(false);
+      }
+    } else {
+      setSmartPolicy(null);
+    }
+  }
+
+  async function recalculateSmartBlocking() {
+    if (!settings) return;
+    setSmartLoading(true);
+    try {
+      const policy = await computeSmartBlockingPolicy(settings);
+      setSmartPolicy(policy);
+
+      setSettings((prev: any) => ({
+        ...prev,
+        timerPolicy: {
+          ...prev.timerPolicy,
+          cardsRequired: policy.cardsRequired,
+          unlockMinutes: policy.unlockMinutes,
+        },
+      }));
+
+      await updateSettings({
+        timerPolicy: {
+          cardsRequired: policy.cardsRequired,
+          unlockMinutes: policy.unlockMinutes,
+          maxUnlockPerDay: settings.timerPolicy?.maxUnlockPerDay ?? 120,
+        },
+      }).catch(() => {});
+    } finally {
+      setSmartLoading(false);
+    }
   }
 
   async function load() {
@@ -329,38 +407,97 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      {/* TIMER */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Timer Policy</Text>
+      {/* SMART BLOCKING / TIMER POLICY */}
+      {smartBlocking ? (
+        <View style={styles.card}>
+          <View style={styles.smartHeader}>
+            <Text style={styles.sectionTitle}>Smart Blocking</Text>
+            <Pressable onPress={toggleSmartBlocking} style={styles.smartToggleOn}>
+              <Text style={styles.smartToggleText}>ON</Text>
+            </Pressable>
+          </View>
 
-        <SettingRow
-          label="Cards Required"
-          value={settings.timerPolicy?.cardsRequired}
-          onChange={(v: string) =>
-            setSettings({
-              ...settings,
-              timerPolicy: {
-                ...settings.timerPolicy,
-                cardsRequired: Number(v),
-              },
-            })
-          }
-        />
+          <Text style={styles.smartDesc}>
+            Smart Blocking automatically adjusts how many flashcards you must complete before unlocking social media — based on your actual behavior.
+            {"\n\n"}
+            It looks at how much you've scrolled today versus your usual habits, your learning retention rate, any active parent challenges, and your XP balance. The smarter you study, the more flexibility you get.
+          </Text>
 
-        <SettingRow
-          label="Unlock Minutes"
-          value={settings.timerPolicy?.unlockMinutes}
-          onChange={(v: string) =>
-            setSettings({
-              ...settings,
-              timerPolicy: {
-                ...settings.timerPolicy,
-                unlockMinutes: Number(v),
-              },
-            })
-          }
-        />
-      </View>
+          {smartLoading ? (
+            <View style={styles.smartLoading}>
+              <ActivityIndicator color="#D86732" />
+              <Text style={styles.smartLoadingText}>Calculating your plan...</Text>
+            </View>
+          ) : smartPolicy ? (
+            <>
+              <View style={styles.smartValues}>
+                <View style={styles.smartMetric}>
+                  <Text style={styles.smartMetricValue}>{smartPolicy.cardsRequired}</Text>
+                  <Text style={styles.smartMetricLabel}>Cards Required</Text>
+                </View>
+                <View style={styles.smartDivider} />
+                <View style={styles.smartMetric}>
+                  <Text style={styles.smartMetricValue}>{smartPolicy.unlockMinutes}m</Text>
+                  <Text style={styles.smartMetricLabel}>Unlock Duration</Text>
+                </View>
+              </View>
+
+              <Text style={styles.smartReasoningTitle}>Why these values?</Text>
+              {smartPolicy.reasoning.map((reason, i) => (
+                <View key={i} style={styles.smartReasonRow}>
+                  <Text style={styles.smartReasonBullet}>•</Text>
+                  <Text style={styles.smartReasonText}>{reason}</Text>
+                </View>
+              ))}
+
+              <Pressable onPress={recalculateSmartBlocking} style={styles.recalcBtn}>
+                <Text style={styles.recalcText}>Recalculate Now</Text>
+              </Pressable>
+            </>
+          ) : null}
+        </View>
+      ) : (
+        <View style={styles.card}>
+          <View style={styles.smartHeader}>
+            <Text style={styles.sectionTitle}>Timer Policy</Text>
+            <Pressable onPress={toggleSmartBlocking} style={styles.smartToggleOff}>
+              <Text style={styles.smartToggleText}>Smart</Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.smartDesc}>
+            Enable Smart Blocking to let the app automatically adjust study requirements based on your daily social media habits and learning performance.
+          </Text>
+
+          <SettingRow
+            label="Cards Required"
+            value={settings.timerPolicy?.cardsRequired}
+            onChange={(v: string) =>
+              setSettings({
+                ...settings,
+                timerPolicy: {
+                  ...settings.timerPolicy,
+                  cardsRequired: Number(v),
+                },
+              })
+            }
+          />
+
+          <SettingRow
+            label="Unlock Minutes"
+            value={settings.timerPolicy?.unlockMinutes}
+            onChange={(v: string) =>
+              setSettings({
+                ...settings,
+                timerPolicy: {
+                  ...settings.timerPolicy,
+                  unlockMinutes: Number(v),
+                },
+              })
+            }
+          />
+        </View>
+      )}
 
       {/* CARD LIMITS */}
       <View style={styles.card}>
@@ -622,5 +759,128 @@ const styles = StyleSheet.create({
   referralArrow: {
     color: "#A9BDDB",
     fontSize: 18,
+  },
+
+  smartHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+
+  smartToggleOn: {
+    backgroundColor: "#1DB954",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+
+  smartToggleOff: {
+    backgroundColor: "#2A2E36",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#D86732",
+  },
+
+  smartToggleText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 12,
+  },
+
+  smartDesc: {
+    color: "#A9BDDB",
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+
+  smartLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+  },
+
+  smartLoadingText: {
+    color: "#A9BDDB",
+    fontSize: 13,
+  },
+
+  smartValues: {
+    flexDirection: "row",
+    backgroundColor: "#111d36",
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 16,
+    alignItems: "center",
+  },
+
+  smartMetric: {
+    flex: 1,
+    alignItems: "center",
+  },
+
+  smartMetricValue: {
+    color: "#D86732",
+    fontSize: 32,
+    fontWeight: "800",
+  },
+
+  smartMetricLabel: {
+    color: "#A9BDDB",
+    fontSize: 12,
+    marginTop: 4,
+  },
+
+  smartDivider: {
+    width: 1,
+    height: 48,
+    backgroundColor: "#2A2E36",
+    marginHorizontal: 16,
+  },
+
+  smartReasoningTitle: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 13,
+    marginBottom: 8,
+  },
+
+  smartReasonRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 6,
+  },
+
+  smartReasonBullet: {
+    color: "#D86732",
+    fontWeight: "800",
+    fontSize: 13,
+  },
+
+  smartReasonText: {
+    color: "#A9BDDB",
+    fontSize: 13,
+    flex: 1,
+    lineHeight: 19,
+  },
+
+  recalcBtn: {
+    marginTop: 16,
+    backgroundColor: "#111d36",
+    borderWidth: 1,
+    borderColor: "#D86732",
+    padding: 12,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+
+  recalcText: {
+    color: "#D86732",
+    fontWeight: "700",
+    fontSize: 13,
   },
 });
