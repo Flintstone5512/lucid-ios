@@ -37,14 +37,27 @@ export default function AnalyticsScreen() {
     setLoadError(false);
     try {
       const res = await getAnalyticsDashboard();
-      console.log("[ANALYTICS] raw response:", JSON.stringify(res).slice(0, 300));
+      console.log("[ANALYTICS] raw response:", JSON.stringify(res).slice(0, 500));
+
+      // Resolve the dashboard object from whichever shape the API returns:
+      //   { dashboard: {...} }  — original expected shape
+      //   { data: {...} }       — common wrapper shape
+      //   { analytics: {...} }  — alternate key
+      //   flat object           — top-level fields directly
+      const dashboardData =
+        res?.dashboard ??
+        res?.data?.dashboard ??
+        res?.analytics ??
+        res?.data ??
+        res;
+
+      console.log("[ANALYTICS] resolved dashboardData keys:", Object.keys(dashboardData || {}));
 
       if (role === "parent") {
-        setChildren(res.children || []);
-        // Accept both { dashboard: {...} } and flat { currentStreak, ... }
-        setParentDashboard(res.dashboard ?? res);
+        setChildren(res?.children || res?.data?.children || []);
+        setParentDashboard(dashboardData);
       } else {
-        setDashboard(res.dashboard ?? res);
+        setDashboard(dashboardData);
       }
     } catch (err: any) {
       console.error("[ANALYTICS] load failed:", err?.message, err?.response?.status, err?.response?.data);
