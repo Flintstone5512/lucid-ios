@@ -627,13 +627,13 @@ export default function SessionScreen() {
         setBlitzExpired(false);
       } else {
         setChallengeType(null);
-        setChallengeChosen(false);
+        setChallengeChosen(true);
+        setChallengeSelectVisible(false);
         setSpeedTimeLeft(30);
         setBlitzTimeLeft(3);
         setBlitzExpired(false);
         setSessionXPStart(0);
         setMarathonRound(1);
-        setChallengeSelectVisible(true);
       }
 
       // Restore saved progress for this deck/shuffle config
@@ -1320,6 +1320,14 @@ export default function SessionScreen() {
             <Pressable onPress={toggleSwipeMode} style={styles.modeToggle}>
               <Text style={styles.modeToggleText}>{swipeMode ? "✦ Swipe" : "⊞ Buttons"}</Text>
             </Pressable>
+            {!challengeType && (
+              <Pressable
+                onPress={() => { setChallengeSelectVisible(true); setChallengeChosen(false); }}
+                style={styles.modeToggle}
+              >
+                <Text style={styles.modeToggleText}>🏆 Challenges</Text>
+              </Pressable>
+            )}
           </View>
         </View>
 
