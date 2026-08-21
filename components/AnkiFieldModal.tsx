@@ -1,6 +1,49 @@
-import { ScrollView, Text, Pressable, TextInput, View } from "react-native";
+import { ScrollView, Text, Pressable, TextInput, View, Image } from "react-native";
 
-export type AnkiFieldSchema = { name: string; value: string }[];
+export type MediaRef = { type: "image" | "audio" | "video"; url: string };
+export type AnkiFieldSchema = { name: string; value: string; media?: MediaRef[] }[];
+
+function extractImageUrls(value: string): string[] {
+  const fromTags = [...value.matchAll(/<img[^>]+src="([^"]+)"/gi)].map((m) => m[1]);
+  const fromBare = [...value.matchAll(/https?:\/\/[^\s"<>]+\.(?:png|jpg|jpeg|gif|webp)(\?[^\s"<>]*)?/gi)].map((m) => m[0]);
+  return [...new Set([...fromTags, ...fromBare])].filter((u) => /^https?:\/\//i.test(u));
+}
+
+function stripHtml(value: string): string {
+  return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function FieldPreview({
+  value,
+  media = [],
+  maxLines = 2,
+}: {
+  value: string;
+  media?: MediaRef[];
+  maxLines?: number;
+}) {
+  const imgUrlsFromText = extractImageUrls(value);
+  const imgUrlsFromMedia = media.filter((m) => m.type === "image").map((m) => m.url);
+  const allImgUrls = [...new Set([...imgUrlsFromText, ...imgUrlsFromMedia])];
+  const text = stripHtml(value);
+  return (
+    <View style={{ marginTop: 2 }}>
+      {!!text && (
+        <Text style={{ color: "#A9BDDB", fontSize: 12 }} numberOfLines={maxLines}>
+          {text}
+        </Text>
+      )}
+      {allImgUrls.map((uri, i) => (
+        <Image
+          key={i}
+          source={{ uri }}
+          style={{ width: "100%", height: 80, borderRadius: 6, marginTop: 4 }}
+          resizeMode="cover"
+        />
+      ))}
+    </View>
+  );
+}
 
 export function AnkiFieldModal({
   title, subtitle, fields, sample,
@@ -21,8 +64,18 @@ export function AnkiFieldModal({
   onConfirm: () => void; confirmLabel: string; onCancel: () => void;
   showAudio?: boolean;
 }) {
-  const frontPreview = frontIndices.map((i) => sample[i]?.value).filter(Boolean).join(" · ");
-  const backPreview  = backIndices.map((i) => sample[i]?.value).filter(Boolean).join("\n");
+  const frontPreviewFields = frontIndices.map((i) => sample[i]).filter(Boolean);
+  const backPreviewFields  = backIndices.map((i) => sample[i]).filter(Boolean);
+  const frontPreviewText = frontPreviewFields.map((f) => stripHtml(f.value)).filter(Boolean).join(" · ");
+  const backPreviewText  = backPreviewFields.map((f) => stripHtml(f.value)).filter(Boolean).join("\n");
+  const frontPreviewImgs = [
+    ...frontPreviewFields.flatMap((f) => extractImageUrls(f.value)),
+    ...frontPreviewFields.flatMap((f) => (f.media ?? []).filter((m) => m.type === "image").map((m) => m.url)),
+  ];
+  const backPreviewImgs = [
+    ...backPreviewFields.flatMap((f) => extractImageUrls(f.value)),
+    ...backPreviewFields.flatMap((f) => (f.media ?? []).filter((m) => m.type === "image").map((m) => m.url)),
+  ];
 
   return (
     <View style={{ flex: 1, backgroundColor: "#0e1424" }}>
@@ -75,7 +128,7 @@ export function AnkiFieldModal({
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: selected ? "#D86732" : "white", fontWeight: "700", fontSize: 13 }}>{name}</Text>
-                {sample[i]?.value ? <Text style={{ color: "#A9BDDB", fontSize: 12, marginTop: 2 }} numberOfLines={2}>{sample[i].value}</Text> : null}
+                {sample[i]?.value || sample[i]?.media?.length ? <FieldPreview value={sample[i]?.value ?? ""} media={sample[i]?.media} maxLines={2} /> : null}
               </View>
             </Pressable>
           );
@@ -102,7 +155,7 @@ export function AnkiFieldModal({
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: selected ? "#6EADEB" : "white", fontWeight: "700", fontSize: 13 }}>{name}</Text>
-                {sample[i]?.value ? <Text style={{ color: "#A9BDDB", fontSize: 12, marginTop: 2 }} numberOfLines={2}>{sample[i].value}</Text> : null}
+                {sample[i]?.value || sample[i]?.media?.length ? <FieldPreview value={sample[i]?.value ?? ""} media={sample[i]?.media} maxLines={2} /> : null}
               </View>
             </Pressable>
           );
@@ -144,10 +197,26 @@ export function AnkiFieldModal({
           <View style={{ marginTop: 24, backgroundColor: "#161b22", borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#2a2e36" }}>
             <Text style={{ color: "#D86732", fontWeight: "700", fontSize: 11, marginBottom: 10, letterSpacing: 1 }}>PREVIEW</Text>
             <Text style={{ color: "#888", fontSize: 11, marginBottom: 4 }}>FRONT</Text>
-            <Text style={{ color: "white", fontSize: 14, marginBottom: 12 }} numberOfLines={4}>{frontPreview || "—"}</Text>
-            <View style={{ height: 1, backgroundColor: "#2a2e36", marginBottom: 12 }} />
+            {frontPreviewText ? (
+              <Text style={{ color: "white", fontSize: 14, marginBottom: 4 }} numberOfLines={4}>{frontPreviewText}</Text>
+            ) : null}
+            {frontPreviewImgs.map((uri, i) => (
+              <Image key={i} source={{ uri }} style={{ width: "100%", height: 120, borderRadius: 8, marginBottom: 4 }} resizeMode="contain" />
+            ))}
+            {!frontPreviewText && frontPreviewImgs.length === 0 && (
+              <Text style={{ color: "white", fontSize: 14, marginBottom: 4 }}>—</Text>
+            )}
+            <View style={{ height: 1, backgroundColor: "#2a2e36", marginTop: 8, marginBottom: 12 }} />
             <Text style={{ color: "#888", fontSize: 11, marginBottom: 4 }}>BACK</Text>
-            <Text style={{ color: "white", fontSize: 14 }} numberOfLines={6}>{backPreview || "—"}</Text>
+            {backPreviewText ? (
+              <Text style={{ color: "white", fontSize: 14, marginBottom: 4 }} numberOfLines={6}>{backPreviewText}</Text>
+            ) : null}
+            {backPreviewImgs.map((uri, i) => (
+              <Image key={i} source={{ uri }} style={{ width: "100%", height: 120, borderRadius: 8, marginBottom: 4 }} resizeMode="contain" />
+            ))}
+            {!backPreviewText && backPreviewImgs.length === 0 && (
+              <Text style={{ color: "white", fontSize: 14 }}>—</Text>
+            )}
           </View>
         )}
 

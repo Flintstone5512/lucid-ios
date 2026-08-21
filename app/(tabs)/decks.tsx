@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 
-import { generateDeck, importAnkiDeck, previewAnkiDeck, importExcelDeck, previewExcelDeck, remapDeckFields, CardType, AnkiPreview } from "../../services/aiDeckService";
+import { generateDeck, importAnkiDeck, previewAnkiDeck, importExcelDeck, previewExcelDeck, remapDeckFields, previewAIDeck, previewAIDeckFromFile, confirmAIDeck, CardType, AnkiPreview, AIPreviewCard } from "../../services/aiDeckService";
 import { AnkiFieldModal } from "../../components/AnkiFieldModal";
 import { useRefocusStore } from "../../store/useRefocusStore";
 import {
@@ -26,6 +26,54 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../../services/api";
 import UpgradeButton from "../../components/UpgradeButton";
 import { refreshUserContext } from "../../services/contextService";
+
+function AIPreviewModalContent({
+  cards,
+  deckName,
+  frontIndices,
+  backIndices,
+  onFrontToggle,
+  onBackToggle,
+  onDeckNameChange,
+  onConfirm,
+  onCancel,
+}: {
+  cards: AIPreviewCard[];
+  deckName: string;
+  frontIndices: number[];
+  backIndices: number[];
+  onFrontToggle: (i: number) => void;
+  onBackToggle: (i: number) => void;
+  onDeckNameChange: (name: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const sampleCard = cards.find((c) => c.type !== "cloze");
+  const sample = [
+    { name: "Front", value: sampleCard?.front ?? "" },
+    { name: "Back",  value: sampleCard?.back  ?? "" },
+  ];
+  return (
+    <AnkiFieldModal
+      title="Map Card Fields"
+      subtitle={`${cards.length} card${cards.length !== 1 ? "s" : ""} generated — choose which side is Front`}
+      fields={["Front", "Back"]}
+      sample={sample}
+      frontIndices={frontIndices}
+      backIndices={backIndices}
+      audioIndex={null}
+      onFrontToggle={onFrontToggle}
+      onBackToggle={onBackToggle}
+      onAudioToggle={() => {}}
+      deckName={deckName}
+      onDeckNameChange={onDeckNameChange}
+      onConfirm={onConfirm}
+      confirmLabel="Create Deck"
+      onCancel={onCancel}
+      showAudio={false}
+    />
+  );
+}
 
 export default function DecksScreen() {
   const [prompt, setPrompt] = useState("");
@@ -92,6 +140,15 @@ export default function DecksScreen() {
   const [excelDeckName, setExcelDeckName] = useState("");
   const [excelModalVisible, setExcelModalVisible] = useState(false);
   const [excelPreviewing, setExcelPreviewing] = useState(false);
+
+  // AI preview state (text paste or file upload → preview → map → confirm)
+  const [aiPreviewCards, setAiPreviewCards] = useState<AIPreviewCard[]>([]);
+  const [aiPreviewDeckName, setAiPreviewDeckName] = useState("");
+  const [aiPreviewCardType, setAiPreviewCardType] = useState<CardType>("basic");
+  const [aiPreviewFrontIndices, setAiPreviewFrontIndices] = useState<number[]>([0]);
+  const [aiPreviewBackIndices, setAiPreviewBackIndices] = useState<number[]>([1]);
+  const [aiPreviewModalVisible, setAiPreviewModalVisible] = useState(false);
+  const [aiPreviewing, setAiPreviewing] = useState(false);
 
   // Remap modal state (paid users, existing anki decks)
   const [remapDeck, setRemapDeck] = useState<any>(null);
@@ -178,34 +235,111 @@ export default function DecksScreen() {
     }
   }
 
+  function openAIPreviewModal(cards: AIPreviewCard[], deckName: string, ct: CardType) {
+    // Cloze-only decks have no front/back to map — save directly
+    const hasNonCloze = cards.some((c) => c.type !== "cloze");
+    setAiPreviewCards(cards);
+    setAiPreviewDeckName(deckName);
+    setAiPreviewCardType(ct);
+    setAiPreviewFrontIndices([0]);
+    setAiPreviewBackIndices([1]);
+    if (hasNonCloze) {
+      setAiPreviewModalVisible(true);
+    } else {
+      // All cloze — skip mapping and save immediately
+      handleConfirmAIPreview(cards, deckName, ct);
+    }
+  }
+
   async function handleGenerate() {
     if (!prompt.trim()) return;
 
     const state = useRefocusStore.getState();
     const currentMaxDecks = state.limits?.maxDecks ?? 2;
-    const liveDeckCount = decks.length;
-
-    if (liveDeckCount >= currentMaxDecks) {
+    if (decks.length >= currentMaxDecks) {
       setStatus("⚠️ Deck limit reached");
       return;
     }
 
-    setLoading(true);
-    setStatus("Generating...");
+    setAiPreviewing(true);
+    setStatus("Generating preview...");
 
     try {
-      await generateDeck(prompt.trim(), cardType, deckNameInput.trim() || undefined);
-      await refreshUserContext();
-      await loadDecks();
-
-      setStatus("✅ Deck created");
+      const preview = await previewAIDeck(prompt.trim(), cardType);
       setPrompt("");
+      openAIPreviewModal(preview.cards, deckNameInput.trim() || preview.deckName, cardType);
       setDeckNameInput("");
+      setStatus("");
     } catch (err) {
       console.error(err);
       setStatus("❌ Failed to generate");
     } finally {
+      setAiPreviewing(false);
+    }
+  }
+
+  async function handleAIFileUpload() {
+    const result = await DocumentPicker.getDocumentAsync({ type: "*/*" });
+    if (result.canceled) return;
+
+    const file = result.assets[0];
+    const state = useRefocusStore.getState();
+    const currentMaxDecks = state.limits?.maxDecks ?? 2;
+    if (decks.length >= currentMaxDecks) {
+      setStatus("⚠️ Deck limit reached");
+      return;
+    }
+
+    setAiPreviewing(true);
+    setStatus("Reading file...");
+
+    try {
+      const preview = await previewAIDeckFromFile(file, cardType);
+      openAIPreviewModal(preview.cards, deckNameInput.trim() || preview.deckName, cardType);
+      setDeckNameInput("");
+      setStatus("");
+    } catch (err: any) {
+      console.error(err);
+      const msg = err?.response?.data?.error || err.message || "Failed to read file";
+      setStatus(`❌ ${msg}`);
+    } finally {
+      setAiPreviewing(false);
+    }
+  }
+
+  async function handleConfirmAIPreview(
+    cards?: AIPreviewCard[],
+    deckName?: string,
+    ct?: CardType,
+  ) {
+    const finalCards = cards ?? aiPreviewCards;
+    const finalName = deckName ?? aiPreviewDeckName;
+    const finalType = ct ?? aiPreviewCardType;
+
+    // Apply front/back swap if user remapped
+    const swapped = aiPreviewFrontIndices[0] === 1;
+    const processedCards = swapped
+      ? finalCards.map((c) =>
+          c.type === "cloze" ? c : { ...c, front: c.back, back: c.front }
+        )
+      : finalCards;
+
+    setAiPreviewModalVisible(false);
+    setLoading(true);
+    setStatus("Creating deck...");
+
+    try {
+      await confirmAIDeck(processedCards, finalName, finalType);
+      await refreshUserContext();
+      await loadDecks();
+      setStatus("✅ Deck created");
+    } catch (err: any) {
+      console.error(err);
+      setStatus("❌ Failed to create deck");
+    } finally {
       setLoading(false);
+      setAiPreviewCards([]);
+      setAiPreviewDeckName("");
     }
   }
 
@@ -628,19 +762,47 @@ Examples:
           })}
         </View>
 
-        <Pressable
-          onPress={handleGenerate}
-          style={{
-            backgroundColor: "#D86732",
-            padding: 16,
-            borderRadius: 14,
-            marginTop: 14,
-          }}
-        >
-          <Text style={{ textAlign: "center", fontWeight: "800", color: "#111" }}>
-            Generate Deck
-          </Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
+          <Pressable
+            onPress={handleGenerate}
+            disabled={aiPreviewing}
+            style={{
+              flex: 1,
+              backgroundColor: "#D86732",
+              padding: 16,
+              borderRadius: 14,
+              alignItems: "center",
+            }}
+          >
+            {aiPreviewing
+              ? <ActivityIndicator size="small" color="#111" />
+              : <Text style={{ fontWeight: "800", color: "#111" }}>Generate from Text</Text>
+            }
+          </Pressable>
+
+          <Pressable
+            onPress={handleAIFileUpload}
+            disabled={aiPreviewing}
+            style={{
+              flex: 1,
+              backgroundColor: "#1b2540",
+              padding: 16,
+              borderRadius: 14,
+              alignItems: "center",
+              borderWidth: 1,
+              borderColor: "#2a2e36",
+            }}
+          >
+            {aiPreviewing
+              ? <ActivityIndicator size="small" color="#A9BDDB" />
+              : <Text style={{ fontWeight: "700", color: "#A9BDDB" }}>Upload File</Text>
+            }
+          </Pressable>
+        </View>
+
+        <Text style={{ color: "#555", fontSize: 11, marginTop: 8 }}>
+          Supports PDF, DOCX, DOC, XLSX, XLS
+        </Text>
       </View>
 
       {/* IMPORT */}
@@ -967,13 +1129,33 @@ Examples:
       )}
 
       {/* STATUS */}
-      {(loading || previewing) && <ActivityIndicator style={{ marginTop: 20 }} />}
+      {(loading || previewing || aiPreviewing) && <ActivityIndicator style={{ marginTop: 20 }} />}
 
       {!!status && (
         <Text style={{ marginTop: 20, color: "#A9BDDB" }}>
           {status}
         </Text>
       )}
+
+      {/* AI PREVIEW / FIELD MAPPING MODAL */}
+      <Modal
+        visible={aiPreviewModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => { setAiPreviewModalVisible(false); setAiPreviewCards([]); }}
+      >
+        <AIPreviewModalContent
+          cards={aiPreviewCards}
+          deckName={aiPreviewDeckName}
+          frontIndices={aiPreviewFrontIndices}
+          backIndices={aiPreviewBackIndices}
+          onFrontToggle={(i) => setAiPreviewFrontIndices([i])}
+          onBackToggle={(i) => setAiPreviewBackIndices([i])}
+          onDeckNameChange={setAiPreviewDeckName}
+          onConfirm={() => handleConfirmAIPreview()}
+          onCancel={() => { setAiPreviewModalVisible(false); setAiPreviewCards([]); }}
+        />
+      </Modal>
 
       {/* FIELD MAPPING MODAL (import) */}
       <Modal

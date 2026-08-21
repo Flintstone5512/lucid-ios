@@ -6,6 +6,63 @@ import api from "./api";
 
 export type CardType = "basic" | "multiple_choice" | "cloze" | "mixed";
 
+export type AIPreviewCard = {
+  type?: string;
+  front?: string;
+  back?: string;
+  text?: string;
+};
+
+export type AIPreview = {
+  deckName: string;
+  cards: AIPreviewCard[];
+};
+
+export async function previewAIDeck(
+  prompt: string,
+  cardType: CardType = "basic",
+): Promise<AIPreview> {
+  const form = new FormData();
+  form.append("type", "text");
+  form.append("prompt", prompt);
+  form.append("cardType", cardType);
+
+  const res = await api.post("/ai-deck/preview", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 45000,
+  });
+  return res.data;
+}
+
+export async function previewAIDeckFromFile(
+  file: { uri: string; name: string; mimeType?: string },
+  cardType: CardType = "basic",
+): Promise<AIPreview> {
+  const form = new FormData();
+  form.append("type", "file");
+  form.append("cardType", cardType);
+  form.append("file", {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType || "application/octet-stream",
+  } as any);
+
+  const res = await api.post("/ai-deck/preview", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 60000,
+  });
+  return res.data;
+}
+
+export async function confirmAIDeck(
+  cards: AIPreviewCard[],
+  deckName: string,
+  cardType: CardType = "basic",
+) {
+  const res = await api.post("/ai-deck/confirm", { cards, deckName, cardType });
+  return res.data;
+}
+
 export async function generateDeck(prompt: string, cardType: CardType = "basic", deckName?: string) {
   const form = new FormData();
   form.append("type", "text");
@@ -30,13 +87,17 @@ export async function askAITutor(front: string, back: string): Promise<string> {
    🔥 IMPORT ANKI (.apkg)
 ========================= */
 
-export type AnkiFieldSchema = { name: string; value: string }[];
+export type MediaRef = { type: "image" | "audio" | "video"; url: string };
+export type AnkiFieldSchema = { name: string; value: string; media?: MediaRef[] }[];
 
 export type AnkiPreview = {
   deckName: string;
   totalNotes: number;
   modelSchemas: { modelId: string; modelName: string; fields: string[] }[];
   samples: AnkiFieldSchema[];
+  suggestedFrontFieldIndices?: number[];
+  suggestedBackFieldIndices?: number[];
+  suggestedAudioFieldIndex?: number | null;
 };
 
 export async function previewAnkiDeck(file: {
