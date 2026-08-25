@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Platform } from "react-native";
 import { router } from "expo-router";
 import { setAuthToken } from "../services/api";
+import { getIOSAuthorizationStatus } from "../services/nativeBridge";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -26,6 +27,22 @@ export default function LoginScreen() {
       }
 
       await setAuthToken(data.token);
+
+      // On iOS, check Screen Time authorization before entering the app.
+      // The _layout useEffect won't re-run after login because iosScreenTimeChecked
+      // was already set to true during cold start.
+      if (Platform.OS === "ios") {
+        try {
+          const authStatus = await getIOSAuthorizationStatus();
+          if (authStatus?.status !== "approved") {
+            router.replace("/screens/IOSScreenTimeSetupScreen");
+            return;
+          }
+        } catch {
+          // If the check fails, fall through to tabs — the layout will catch it on next launch
+        }
+      }
+
       router.replace("/(tabs)");
     } catch (err) {
       console.error(err);

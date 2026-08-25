@@ -1,8 +1,9 @@
 import { router } from "expo-router";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
 import OnboardingContainer from "../../components/onboarding/OnboardingContainer";
 import { useOnboarding } from "../../context/OnboardingContext";
 import { setOnboardingComplete } from "../../services/storage";
+import { getIOSAuthorizationStatus } from "../../services/nativeBridge";
 
 export default function ReinforcementScreen() {
   const { state } = useOnboarding();
@@ -20,13 +21,24 @@ export default function ReinforcementScreen() {
       return;
     }
 
+    // On iOS, gate all users through Screen Time setup before entering the app.
+    if (Platform.OS === "ios") {
+      try {
+        const authStatus = await getIOSAuthorizationStatus();
+        if (authStatus?.status !== "approved") {
+          router.replace("/screens/IOSScreenTimeSetupScreen");
+          return;
+        }
+      } catch {
+        // Fall through to tabs if check fails
+      }
+    }
+
     if (state.intent === "parent") {
-      // 🔥 GO TO PARENT DASHBOARD
       router.replace("/(tabs)");
       return;
     }
 
-    // 🔥 SOLO USER
     router.replace("/(tabs)");
   }
 
