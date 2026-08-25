@@ -199,6 +199,14 @@ export async function registerPushToken(token: string) {
   }
 }
 
+export async function reportBlockingDisabled() {
+  try {
+    await api.post("/me/blocking-disabled");
+  } catch {
+    // non-critical — swallow silently
+  }
+}
+
 /* =========================
    🔥 EXPORT
 ========================= */

@@ -3,12 +3,14 @@ import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useRef, useState } from "react";
 import { AppState, Platform, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { OnboardingProvider } from "../context/OnboardingContext";
 import {
   bootstrapAuthToken,
   registerPushToken,
+  reportBlockingDisabled,
   requestUnlock,
 } from "../services/api";
 import { refreshUserContext } from "../services/contextService";
@@ -125,6 +127,9 @@ async function handleDeepLink(url: string) {
         const mobileAds = require("react-native-google-mobile-ads").default;
         await mobileAds().initialize();
 
+        // 🔐 Always bootstrap auth token first so API calls work in all paths
+        await bootstrapAuthToken().catch(() => {});
+
         // 🔥 STEP 0: check deep link FIRST (before anything else)
         const initialUrl = await ExpoLinking.getInitialURL();
 
@@ -158,6 +163,14 @@ async function handleDeepLink(url: string) {
               await refreshUserContext();
             } catch (err) {
               console.log("⚠️ Context failed:", err);
+            }
+
+            // If a child's enforcement permissions are gone, notify the parent
+            if (Platform.OS === "android" && !ok) {
+              const ctx = useRefocusStore.getState().context as any;
+              if (ctx?.role === "child") {
+                reportBlockingDisabled().catch(() => {});
+              }
             }
 
             // Register push token with backend (iOS only — Android handled natively)
@@ -366,13 +379,15 @@ async function handleDeepLink(url: string) {
   ========================= */
 
   return (
-    <SafeAreaProvider>
-      <OnboardingProvider>
-        <Stack
-          screenOptions={{ headerShown: false }}
-          initialRouteName="index"
-        />
-      </OnboardingProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <OnboardingProvider>
+          <Stack
+            screenOptions={{ headerShown: false }}
+            initialRouteName="index"
+          />
+        </OnboardingProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

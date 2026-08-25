@@ -199,17 +199,6 @@ if (role === "parent" && tabs.length === 0) {
     );
   }
 
-  if (loadError) {
-    return (
-      <View style={styles.center}>
-        <Text style={[styles.loading, { marginBottom: 16 }]}>Failed to load analytics.</Text>
-        <Pressable onPress={load} style={{ backgroundColor: "#D86732", padding: 14, borderRadius: 12 }}>
-          <Text style={{ color: "#111", fontWeight: "800" }}>Try Again</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
   if (!data) {
     return (
       <View style={styles.center}>

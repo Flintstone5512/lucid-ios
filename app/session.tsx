@@ -1,5 +1,6 @@
+import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Audio, Video, ResizeMode, InterruptionModeIOS, InterruptionModeAndroid } from "expo-av";
 import * as Speech from "expo-speech";
@@ -325,6 +326,11 @@ export default function SessionScreen() {
   const [loading, setLoading] = useState(true);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const swipeSounds = useRef<{ again: Audio.Sound | null; good: Audio.Sound | null; easy: Audio.Sound | null }>({
+    again: null,
+    good: null,
+    easy: null,
+  });
 
   const [noCardsMode, setNoCardsMode] = useState(false);
   const [noCardsGraceUntil, setNoCardsGraceUntil] = useState<string | null>(null);
@@ -373,9 +379,13 @@ export default function SessionScreen() {
 
   const shuffleDeckIdsKey = [...shuffleDeckIds].sort().join(",");
 
-  useEffect(() => {
-    load();
-  }, [selectedDeckId, shuffleMode, shuffleDeckIdsKey]);
+  // Re-run load() whenever the screen gains focus (covers deep-link re-entry
+  // where selectedDeckId/shuffleMode haven't changed so useEffect wouldn't fire)
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [selectedDeckId, shuffleMode, shuffleDeckIdsKey])
+  );
 
   useEffect(() => {
     console.log("✅ SESSION SCREEN MOUNTED");
@@ -404,7 +414,17 @@ export default function SessionScreen() {
     if (!next) Speech.stop();
   }
 
+  async function playSwipeSound(rating: string) {
+    try {
+      const sound = swipeSounds.current[rating as keyof typeof swipeSounds.current];
+      if (!sound) return;
+      await sound.setPositionAsync(0);
+      await sound.playAsync();
+    } catch {}
+  }
+
   function handleSwipeGrade(rating: string) {
+    playSwipeSound(rating);
     setTimeout(() => answer(rating), 200);
   }
 
@@ -672,6 +692,20 @@ export default function SessionScreen() {
       shouldDuckAndroid: true,
       playThroughEarpieceAndroid: false,
     }).catch((e) => console.warn("[SESSION] setAudioMode failed", e));
+
+    // Preload coin swipe sounds
+    (async () => {
+      try {
+        const [a, g, e] = await Promise.all([
+          Audio.Sound.createAsync(require("../assets/sounds/coin_again.wav"), { shouldPlay: false }),
+          Audio.Sound.createAsync(require("../assets/sounds/coin_good.wav"), { shouldPlay: false }),
+          Audio.Sound.createAsync(require("../assets/sounds/coin_easy.mp3"), { shouldPlay: false }),
+        ]);
+        swipeSounds.current.again = a.sound;
+        swipeSounds.current.good = g.sound;
+        swipeSounds.current.easy = e.sound;
+      } catch {}
+    })();
   }, []);
 
   useEffect(() => {
@@ -717,6 +751,7 @@ export default function SessionScreen() {
         soundRef.current.unloadAsync();
         soundRef.current = null;
       }
+      Object.values(swipeSounds.current).forEach((s) => s?.unloadAsync().catch(() => {}));
     };
   }, []);
 

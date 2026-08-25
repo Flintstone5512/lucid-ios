@@ -64,6 +64,7 @@ const STATUS_COLORS: Record<ReferralEntry["status"], string> = {
 export default function ReferralScreen() {
   const [stats, setStats] = useState<ReferralStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [claiming, setClaiming] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,11 +72,12 @@ export default function ReferralScreen() {
   }, []);
 
   async function load() {
+    setError(false);
     try {
       const data = await getReferralStats();
       setStats(data);
     } catch {
-      Alert.alert("Error", "Could not load referral info. Try again later.");
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -143,7 +145,19 @@ export default function ReferralScreen() {
     );
   }
 
-  if (!stats) return null;
+  if (error || !stats) {
+    return (
+      <View style={styles.center}>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backText}>← Back</Text>
+        </Pressable>
+        <Text style={styles.errorText}>Could not load referral info.</Text>
+        <Pressable onPress={load} style={styles.retryBtn}>
+          <Text style={styles.shareBtnText}>Try Again</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   const converted = stats.totalConverted;
 
