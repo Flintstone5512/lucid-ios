@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
   Modal,
   Switch,
+  Platform,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 
@@ -165,6 +166,14 @@ export default function DecksScreen() {
   const [addingCard, setAddingCard] = useState(false);
   const [cardStatus, setCardStatus] = useState("");
 
+  // Goal state
+  const [goalProgressMap, setGoalProgressMap] = useState<Record<string, any>>({});
+  const [editGoalEnabled, setEditGoalEnabled] = useState(false);
+  const [editGoalMonth, setEditGoalMonth] = useState("");
+  const [editGoalDay, setEditGoalDay] = useState("");
+  const [editGoalYear, setEditGoalYear] = useState("");
+  const [goalSaving, setGoalSaving] = useState(false);
+
   const shouldShowAdsUpgrade =
     plan === "free" &&
     adMode !== "ad_supported" &&
@@ -184,10 +193,82 @@ export default function DecksScreen() {
   async function loadDecks() {
     try {
       const res = await api.get("/decks");
-      setDecks(res.data.decks || res.data || []);
+      const loaded = res.data.decks || res.data || [];
+      setDecks(loaded);
+      loadGoalProgress(loaded);
     } catch (err) {
       console.error("Failed to load decks", err);
       setStatus("❌ Failed to load decks");
+    }
+  }
+
+  async function loadGoalProgress(deckList: any[]) {
+    const goalDecks = deckList.filter((d) => d.goalEnabled);
+    if (!goalDecks.length) return;
+    const results = await Promise.allSettled(
+      goalDecks.map((d) => api.get(`/decks/${d._id}/goal-progress`))
+    );
+    const map: Record<string, any> = {};
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled" && r.value.data?.ok) {
+        map[goalDecks[i]._id] = r.value.data;
+      }
+    });
+    setGoalProgressMap((prev) => ({ ...prev, ...map }));
+  }
+
+  function parseDateParts(isoString: string | null | undefined) {
+    if (!isoString) return { month: "", day: "", year: "" };
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return { month: "", day: "", year: "" };
+    return {
+      month: String(d.getUTCMonth() + 1),
+      day: String(d.getUTCDate()),
+      year: String(d.getUTCFullYear()),
+    };
+  }
+
+  async function handleSaveGoal() {
+    if (!editingDeck) return;
+    setGoalSaving(true);
+    try {
+      let goalTargetDate: string | null = null;
+      if (editGoalEnabled) {
+        const m = parseInt(editGoalMonth, 10);
+        const d = parseInt(editGoalDay, 10);
+        const y = parseInt(editGoalYear, 10);
+        if (!m || !d || !y || y < 2024 || m > 12 || d > 31) {
+          setCardStatus("❌ Enter a valid date (MM / DD / YYYY)");
+          setGoalSaving(false);
+          return;
+        }
+        goalTargetDate = new Date(Date.UTC(y, m - 1, d)).toISOString();
+      }
+      await api.patch(`/decks/${editingDeck._id}/goal`, {
+        goalEnabled: editGoalEnabled,
+        goalTargetDate,
+      });
+      // Refresh goal progress for this deck
+      if (editGoalEnabled) {
+        try {
+          const res = await api.get(`/decks/${editingDeck._id}/goal-progress`);
+          if (res.data?.ok) {
+            setGoalProgressMap((prev) => ({ ...prev, [editingDeck._id]: res.data }));
+          }
+        } catch {}
+      } else {
+        setGoalProgressMap((prev) => { const next = { ...prev }; delete next[editingDeck._id]; return next; });
+      }
+      // Keep deck list in sync
+      setDecks((prev: any[]) => prev.map((dk) => dk._id === editingDeck._id
+        ? { ...dk, goalEnabled: editGoalEnabled, goalTargetDate }
+        : dk
+      ));
+      setCardStatus("✅ Goal saved");
+    } catch (err) {
+      setCardStatus("❌ Failed to save goal");
+    } finally {
+      setGoalSaving(false);
     }
   }
 
@@ -530,6 +611,14 @@ export default function DecksScreen() {
     setNewCardFront("");
     setNewCardBack("");
     setCardsLoading(true);
+
+    // Initialize goal form from deck data
+    setEditGoalEnabled(deck.goalEnabled ?? false);
+    const parts = parseDateParts(deck.goalTargetDate);
+    setEditGoalMonth(parts.month);
+    setEditGoalDay(parts.day);
+    setEditGoalYear(parts.year);
+
     try {
       const res = await api.get(`/cards/${deck._id}`);
       setDeckCards(res.data.cards || []);
@@ -1058,6 +1147,31 @@ Examples:
                   >
                     {deckCardCount} cards
                   </Text>
+                  {(() => {
+                    const gp = goalProgressMap[deck._id];
+                    if (!gp?.goalEnabled) return null;
+                    const pct = gp.masteryPct ?? 0;
+                    const days = gp.daysRemaining;
+                    const barColor = isSingleSelected ? "#111" : "#4ade80";
+                    const trackColor = isSingleSelected ? "rgba(0,0,0,0.2)" : "rgba(255,255,255,0.1)";
+                    return (
+                      <View style={{ marginTop: 8 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                          <Text style={{ color: isSingleSelected ? "#2a2a2a" : "#4ade80", fontSize: 11, fontWeight: "700" }}>
+                            {pct}% exam-ready
+                          </Text>
+                          {days !== null && (
+                            <Text style={{ color: isSingleSelected ? "#2a2a2a" : "#A9BDDB", fontSize: 11 }}>
+                              {days === 0 ? "Test today!" : `${days}d left`}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={{ height: 4, backgroundColor: trackColor, borderRadius: 2, overflow: "hidden" }}>
+                          <View style={{ height: 4, width: `${Math.min(pct, 100)}%`, backgroundColor: barColor, borderRadius: 2 }} />
+                        </View>
+                      </View>
+                    );
+                  })()}
                 </View>
               </Pressable>
 
@@ -1318,6 +1432,130 @@ Examples:
                 </View>
               ))
             )}
+
+            {/* STUDY GOAL */}
+            <Text style={{ color: "#D86732", fontWeight: "700", marginTop: 28, marginBottom: 12 }}>
+              Study Goal
+            </Text>
+            <View style={{ backgroundColor: "#161b22", borderRadius: 14, padding: 16, borderWidth: 1, borderColor: editGoalEnabled ? "rgba(74,222,128,0.3)" : "#2a2e36" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={{ color: "white", fontWeight: "700", fontSize: 15 }}>Track Exam Readiness</Text>
+                  <Text style={{ color: "#A9BDDB", fontSize: 12, marginTop: 3 }}>
+                    Set a target date and the app will pace your daily study requirements.
+                  </Text>
+                </View>
+                <Switch
+                  value={editGoalEnabled}
+                  onValueChange={(v) => setEditGoalEnabled(v)}
+                  trackColor={{ false: "#2a2e36", true: "#4ade80" }}
+                  thumbColor={editGoalEnabled ? "#fff" : "#A9BDDB"}
+                />
+              </View>
+
+              {editGoalEnabled && (
+                <View style={{ marginTop: 16 }}>
+                  <Text style={{ color: "#A9BDDB", fontSize: 12, marginBottom: 8 }}>Target Date</Text>
+                  <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                    <TextInput
+                      value={editGoalMonth}
+                      onChangeText={(t) => setEditGoalMonth(t.replace(/\D/g, "").slice(0, 2))}
+                      placeholder="MM"
+                      placeholderTextColor="#555"
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      style={{ flex: 1, backgroundColor: "#0f172a", color: "white", borderRadius: 10, padding: 12, borderWidth: 1, borderColor: "#2a2e36", textAlign: "center", fontSize: 16 }}
+                    />
+                    <Text style={{ color: "#555", fontSize: 18 }}>/</Text>
+                    <TextInput
+                      value={editGoalDay}
+                      onChangeText={(t) => setEditGoalDay(t.replace(/\D/g, "").slice(0, 2))}
+                      placeholder="DD"
+                      placeholderTextColor="#555"
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      style={{ flex: 1, backgroundColor: "#0f172a", color: "white", borderRadius: 10, padding: 12, borderWidth: 1, borderColor: "#2a2e36", textAlign: "center", fontSize: 16 }}
+                    />
+                    <Text style={{ color: "#555", fontSize: 18 }}>/</Text>
+                    <TextInput
+                      value={editGoalYear}
+                      onChangeText={(t) => setEditGoalYear(t.replace(/\D/g, "").slice(0, 4))}
+                      placeholder="YYYY"
+                      placeholderTextColor="#555"
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      style={{ flex: 2, backgroundColor: "#0f172a", color: "white", borderRadius: 10, padding: 12, borderWidth: 1, borderColor: "#2a2e36", textAlign: "center", fontSize: 16 }}
+                    />
+                  </View>
+
+                  {/* Progress summary if goal data loaded */}
+                  {(() => {
+                    const gp = goalProgressMap[editingDeck?._id];
+                    if (!gp?.goalEnabled) return null;
+                    const pct = gp.masteryPct ?? 0;
+                    const examReady = gp.examReadyCards ?? 0;
+                    const mastered = gp.masteredCards ?? 0;
+                    const total = gp.totalCards ?? 0;
+                    const days = gp.daysRemaining;
+                    const daily = gp.dailyCardsNeeded;
+                    return (
+                      <View style={{ marginTop: 16 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                          <Text style={{ color: "#4ade80", fontWeight: "700", fontSize: 13 }}>{pct}% Exam-Ready</Text>
+                          {days !== null && (
+                            <Text style={{ color: "#A9BDDB", fontSize: 13 }}>
+                              {days === 0 ? "Test today!" : `${days} day${days !== 1 ? "s" : ""} left`}
+                            </Text>
+                          )}
+                        </View>
+                        {/* Segmented bar */}
+                        <View style={{ height: 8, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 4, overflow: "hidden", flexDirection: "row" }}>
+                          {mastered > 0 && total > 0 && (
+                            <View style={{ width: `${(mastered / total) * 100}%`, backgroundColor: "#22c55e", height: 8 }} />
+                          )}
+                          {(examReady - mastered) > 0 && total > 0 && (
+                            <View style={{ width: `${((examReady - mastered) / total) * 100}%`, backgroundColor: "#4ade80", height: 8 }} />
+                          )}
+                        </View>
+                        {/* Legend */}
+                        <View style={{ flexDirection: "row", gap: 14, marginTop: 8 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                            <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: "#22c55e" }} />
+                            <Text style={{ color: "#A9BDDB", fontSize: 11 }}>Mastered ({mastered})</Text>
+                          </View>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                            <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: "#4ade80" }} />
+                            <Text style={{ color: "#A9BDDB", fontSize: 11 }}>Exam-ready ({examReady - mastered})</Text>
+                          </View>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                            <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.08)" }} />
+                            <Text style={{ color: "#A9BDDB", fontSize: 11 }}>Learning ({total - examReady})</Text>
+                          </View>
+                        </View>
+                        {daily !== null && daily > 0 && (
+                          <Text style={{ color: "#A9BDDB", fontSize: 12, marginTop: 10 }}>
+                            ~{daily} card{daily !== 1 ? "s" : ""} need to become exam-ready per day to hit your goal.
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })()}
+                </View>
+              )}
+
+              <Pressable
+                onPress={handleSaveGoal}
+                disabled={goalSaving}
+                style={{ marginTop: 16, backgroundColor: editGoalEnabled ? "#4ade80" : "#2a2e36", borderRadius: 10, padding: 12, alignItems: "center" }}
+              >
+                {goalSaving
+                  ? <ActivityIndicator color="#111" size="small" />
+                  : <Text style={{ color: editGoalEnabled ? "#111" : "#A9BDDB", fontWeight: "700" }}>
+                      {editGoalEnabled ? "Save Goal" : "Remove Goal"}
+                    </Text>
+                }
+              </Pressable>
+            </View>
 
             {/* Add card section */}
             <Text

@@ -29,6 +29,7 @@ import {
   setSmartBlockingEnabled,
   computeSmartBlockingPolicy,
   SmartBlockingResult,
+  SessionContext,
 } from "../../services/smartBlockingService";
 
 export default function SettingsScreen() {
@@ -39,7 +40,7 @@ export default function SettingsScreen() {
   const [smartPolicy, setSmartPolicy] = useState<SmartBlockingResult | null>(null);
   const [smartLoading, setSmartLoading] = useState(false);
 
-  const { plan, adMode, context } = useRefocusStore();
+  const { plan, adMode, context, selectedDeckId, shuffleMode, shuffleDeckIds } = useRefocusStore();
   const [adModeLoading, setAdModeLoading] = useState(false);
   const role = context?.role || "solo";
 
@@ -67,7 +68,7 @@ export default function SettingsScreen() {
     if (next) {
       setSmartLoading(true);
       try {
-        const policy = await computeSmartBlockingPolicy(settings);
+        const policy = await computeSmartBlockingPolicy(settings, { selectedDeckId, shuffleMode, shuffleDeckIds });
         setSmartPolicy(policy);
 
         // Push computed values into settings state so save() picks them up
@@ -100,7 +101,7 @@ export default function SettingsScreen() {
     if (!settings) return;
     setSmartLoading(true);
     try {
-      const policy = await computeSmartBlockingPolicy(settings);
+      const policy = await computeSmartBlockingPolicy(settings, { selectedDeckId, shuffleMode, shuffleDeckIds });
       setSmartPolicy(policy);
 
       setSettings((prev: any) => ({
@@ -441,6 +442,62 @@ export default function SettingsScreen() {
                   <Text style={styles.smartMetricLabel}>Unlock Duration</Text>
                 </View>
               </View>
+
+              {smartPolicy.goalsSummary && smartPolicy.goalsSummary.goals.length > 0 && (() => {
+                const { goals, allOnTrack } = smartPolicy.goalsSummary!;
+                const headerColor = allOnTrack ? "#4ade80" : "#f97316";
+                const borderColor = allOnTrack ? "rgba(74,222,128,0.2)" : "rgba(249,115,22,0.2)";
+                const bgColor = allOnTrack ? "rgba(74,222,128,0.06)" : "rgba(249,115,22,0.06)";
+                return (
+                  <View style={{ marginBottom: 16, backgroundColor: bgColor, borderRadius: 12, padding: 14, borderWidth: 1, borderColor }}>
+                    <Text style={{ color: headerColor, fontWeight: "800", fontSize: 13, marginBottom: 10 }}>
+                      {allOnTrack ? "All Goals On Track" : `${goals.length} Active Goal${goals.length !== 1 ? "s" : ""}`}
+                    </Text>
+                    {goals.map((g) => {
+                      const pct = g.masteryPct ?? 0;
+                      const mastered = g.masteredCards ?? 0;
+                      const examReady = g.examReadyCards ?? 0;
+                      const total = g.totalCards ?? 0;
+                      const days = g.daysRemaining;
+                      const isUrgent = days <= 7 && pct < 70;
+                      return (
+                        <View key={g.deckId} style={{ marginBottom: 10 }}>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                            <Text style={{ color: isUrgent ? "#f97316" : "#fff", fontWeight: "700", fontSize: 12 }} numberOfLines={1}>
+                              {g.deckName}
+                            </Text>
+                            <Text style={{ color: "#A9BDDB", fontSize: 11 }}>
+                              {days === 0 ? "Test today!" : `${days}d left · ${pct}%`}
+                            </Text>
+                          </View>
+                          <View style={{ height: 5, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 3, overflow: "hidden", flexDirection: "row" }}>
+                            {mastered > 0 && total > 0 && (
+                              <View style={{ width: `${(mastered / total) * 100}%`, backgroundColor: "#22c55e", height: 5 }} />
+                            )}
+                            {(examReady - mastered) > 0 && total > 0 && (
+                              <View style={{ width: `${((examReady - mastered) / total) * 100}%`, backgroundColor: "#4ade80", height: 5 }} />
+                            )}
+                          </View>
+                        </View>
+                      );
+                    })}
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 4 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <View style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: "#22c55e" }} />
+                        <Text style={{ color: "#A9BDDB", fontSize: 10 }}>Mastered</Text>
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <View style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: "#4ade80" }} />
+                        <Text style={{ color: "#A9BDDB", fontSize: 10 }}>Exam-ready</Text>
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <View style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.08)" }} />
+                        <Text style={{ color: "#A9BDDB", fontSize: 10 }}>Still learning</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })()}
 
               <Text style={styles.smartReasoningTitle}>Why these values?</Text>
               {smartPolicy.reasoning.map((reason, i) => (
