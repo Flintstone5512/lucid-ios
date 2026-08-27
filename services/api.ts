@@ -183,9 +183,14 @@ export async function getAnalyticsDashboard() {
   return res.data;
 }
 
-export async function sendHeartbeat() {
+export async function sendHeartbeat(enforcement?: {
+  platform: string;
+  blockingActive: boolean;
+  hasIOSSelection: boolean | null;
+  blockedApps: string[];
+}) {
   try {
-    await api.patch("/me/heartbeat");
+    await api.patch("/me/heartbeat", enforcement ?? {});
   } catch {
     // non-critical — swallow silently
   }

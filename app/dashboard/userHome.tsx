@@ -17,6 +17,42 @@ import { getSharedState, sendHeartbeat } from "../../services/api";
 import MetricCard from "../../components/MetricCard";
 import UpgradeButton from "../../components/UpgradeButton";
 import { LucidTheme } from "../../constants/lucidTheme";
+import { hasIOSAppSelection } from "../../modules/screen-time";
+import { isSmartBlockingEnabled } from "../../services/smartBlockingService";
+
+// Must stay in sync with useEnforcement.ts
+const ANDROID_BLOCKED_APPS = [
+  "com.instagram.android",
+  "com.zhiliaoapp.musically",
+  "com.twitter.android",
+  "com.google.android.youtube",
+  "com.facebook.katana",
+  "com.facebook.lite",
+  "com.facebook.orca",
+];
+
+async function buildEnforcementPayload() {
+  try {
+    const blockingActive = await isSmartBlockingEnabled();
+    if (Platform.OS === "ios") {
+      const hasIOSSelection = await hasIOSAppSelection().catch(() => false);
+      return {
+        platform: "ios" as const,
+        blockingActive,
+        hasIOSSelection,
+        blockedApps: [] as string[],
+      };
+    }
+    return {
+      platform: "android" as const,
+      blockingActive,
+      hasIOSSelection: null,
+      blockedApps: blockingActive ? ANDROID_BLOCKED_APPS : [],
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 export default function UserDashboard() {
   const { setStatePatch, streak, usage } = useRefocusStore();
@@ -44,13 +80,13 @@ export default function UserDashboard() {
 
     load();
     checkNotificationPermission();
-    sendHeartbeat();
+    buildEnforcementPayload().then(sendHeartbeat);
 
     // Re-check whenever the user returns from Settings; send heartbeat on foreground
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") {
         checkNotificationPermission();
-        sendHeartbeat();
+        buildEnforcementPayload().then(sendHeartbeat);
       }
     });
 

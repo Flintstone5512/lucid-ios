@@ -166,13 +166,21 @@ export default function DecksScreen() {
   const [addingCard, setAddingCard] = useState(false);
   const [cardStatus, setCardStatus] = useState("");
 
-  // Goal state
+  // Goal state (edit modal)
   const [goalProgressMap, setGoalProgressMap] = useState<Record<string, any>>({});
   const [editGoalEnabled, setEditGoalEnabled] = useState(false);
   const [editGoalMonth, setEditGoalMonth] = useState("");
   const [editGoalDay, setEditGoalDay] = useState("");
   const [editGoalYear, setEditGoalYear] = useState("");
   const [goalSaving, setGoalSaving] = useState(false);
+
+  // Goal setup modal (shown after create/import)
+  const [newDeckGoalDeck, setNewDeckGoalDeck] = useState<{ _id: string; name: string } | null>(null);
+  const [newDeckGoalEnabled, setNewDeckGoalEnabled] = useState(false);
+  const [newDeckGoalMonth, setNewDeckGoalMonth] = useState("");
+  const [newDeckGoalDay, setNewDeckGoalDay] = useState("");
+  const [newDeckGoalYear, setNewDeckGoalYear] = useState("");
+  const [newDeckGoalSaving, setNewDeckGoalSaving] = useState(false);
 
   const shouldShowAdsUpgrade =
     plan === "free" &&
@@ -269,6 +277,44 @@ export default function DecksScreen() {
       setCardStatus("❌ Failed to save goal");
     } finally {
       setGoalSaving(false);
+    }
+  }
+
+  async function handleSaveNewDeckGoal() {
+    if (!newDeckGoalDeck) return;
+    setNewDeckGoalSaving(true);
+    try {
+      let goalTargetDate: string | null = null;
+      if (newDeckGoalEnabled) {
+        const m = parseInt(newDeckGoalMonth, 10);
+        const d = parseInt(newDeckGoalDay, 10);
+        const y = parseInt(newDeckGoalYear, 10);
+        if (!m || !d || !y || y < 2024 || m > 12 || d > 31) {
+          setStatus("❌ Enter a valid date (MM / DD / YYYY)");
+          setNewDeckGoalSaving(false);
+          return;
+        }
+        goalTargetDate = new Date(Date.UTC(y, m - 1, d)).toISOString();
+      }
+      await api.patch(`/decks/${newDeckGoalDeck._id}/goal`, {
+        goalEnabled: newDeckGoalEnabled,
+        goalTargetDate,
+      });
+      setDecks((prev: any[]) => prev.map((dk) => dk._id === newDeckGoalDeck._id
+        ? { ...dk, goalEnabled: newDeckGoalEnabled, goalTargetDate }
+        : dk
+      ));
+      if (newDeckGoalEnabled) {
+        try {
+          const res = await api.get(`/decks/${newDeckGoalDeck._id}/goal-progress`);
+          if (res.data?.ok) setGoalProgressMap((prev) => ({ ...prev, [newDeckGoalDeck._id]: res.data }));
+        } catch {}
+      }
+    } catch (err) {
+      setStatus("❌ Failed to save goal");
+    } finally {
+      setNewDeckGoalSaving(false);
+      setNewDeckGoalDeck(null);
     }
   }
 
@@ -410,10 +456,16 @@ export default function DecksScreen() {
     setStatus("Creating deck...");
 
     try {
-      await confirmAIDeck(processedCards, finalName, finalType);
+      const result = await confirmAIDeck(processedCards, finalName, finalType);
       await refreshUserContext();
       await loadDecks();
       setStatus("✅ Deck created");
+      const deckId = result?.deck?._id || result?._id;
+      if (deckId) {
+        setNewDeckGoalEnabled(false);
+        setNewDeckGoalMonth(""); setNewDeckGoalDay(""); setNewDeckGoalYear("");
+        setNewDeckGoalDeck({ _id: deckId, name: finalName });
+      }
     } catch (err: any) {
       console.error(err);
       setStatus("❌ Failed to create deck");
@@ -509,10 +561,17 @@ export default function DecksScreen() {
     setStatus("Importing...");
 
     try {
-      await importAnkiDeck(pendingFile, frontFieldIndices, backFieldIndices, audioFieldIndex, importDeckName.trim() || undefined);
+      const result = await importAnkiDeck(pendingFile, frontFieldIndices, backFieldIndices, audioFieldIndex, importDeckName.trim() || undefined);
       await refreshUserContext();
       await loadDecks();
       setStatus("✅ Deck imported");
+      const deckId = result?.deck?._id || result?.deckId || result?._id;
+      const deckName = importDeckName.trim() || result?.deck?.name || result?.deckName || result?.name || "Imported Deck";
+      if (deckId) {
+        setNewDeckGoalEnabled(false);
+        setNewDeckGoalMonth(""); setNewDeckGoalDay(""); setNewDeckGoalYear("");
+        setNewDeckGoalDeck({ _id: deckId, name: deckName });
+      }
     } catch (err: any) {
       console.error(err);
       setStatus("❌ Upload failed");
@@ -564,10 +623,17 @@ export default function DecksScreen() {
     setStatus("Importing...");
 
     try {
-      await importExcelDeck(excelPendingFile, excelFrontIndices, excelBackIndices, excelDeckName.trim() || undefined);
+      const result = await importExcelDeck(excelPendingFile, excelFrontIndices, excelBackIndices, excelDeckName.trim() || undefined);
       await refreshUserContext();
       await loadDecks();
       setStatus("✅ Deck imported");
+      const deckId = result?.deck?._id || result?.deckId || result?._id;
+      const deckName = excelDeckName.trim() || result?.deck?.name || result?.deckName || result?.name || "Imported Deck";
+      if (deckId) {
+        setNewDeckGoalEnabled(false);
+        setNewDeckGoalMonth(""); setNewDeckGoalDay(""); setNewDeckGoalYear("");
+        setNewDeckGoalDeck({ _id: deckId, name: deckName });
+      }
     } catch (err: any) {
       console.error(err);
       setStatus("❌ Upload failed");
@@ -1346,6 +1412,117 @@ Examples:
           confirmLabel={remapLoading ? "Remapping..." : "Apply Changes"}
           onCancel={() => setRemapDeck(null)}
         />
+      </Modal>
+
+      {/* STUDY GOAL SETUP MODAL (shown after create/import) */}
+      <Modal
+        visible={!!newDeckGoalDeck}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setNewDeckGoalDeck(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: "#0e1424" }}>
+          <View style={{ padding: 24, paddingTop: 56, flex: 1 }}>
+            {/* Header */}
+            <Text style={{ color: "#4ade80", fontSize: 13, fontWeight: "700", letterSpacing: 1, marginBottom: 6 }}>
+              OPTIONAL
+            </Text>
+            <Text style={{ color: "white", fontSize: 22, fontWeight: "800", marginBottom: 8 }}>
+              Set a Study Goal
+            </Text>
+            <Text style={{ color: "#A9BDDB", fontSize: 14, lineHeight: 21, marginBottom: 24 }}>
+              "{newDeckGoalDeck?.name}" was added to your library.
+            </Text>
+
+            {/* Smart Blocking explanation */}
+            <View style={{ backgroundColor: "#161b22", borderRadius: 14, padding: 16, borderWidth: 1, borderColor: "rgba(74,222,128,0.2)", marginBottom: 24 }}>
+              <Text style={{ color: "#4ade80", fontWeight: "700", fontSize: 13, marginBottom: 8 }}>
+                How this connects to Smart Blocking
+              </Text>
+              <Text style={{ color: "#A9BDDB", fontSize: 13, lineHeight: 20 }}>
+                Smart Blocking tracks how close you are to exam-ready on this deck and uses that to set your daily card requirement — the minimum you need to review before apps get unblocked.{"\n\n"}Set a target date and it calculates your daily pace automatically. The closer your exam, the higher the floor. When you're on track, it eases off.
+              </Text>
+            </View>
+
+            {/* Toggle */}
+            <View style={{ backgroundColor: "#161b22", borderRadius: 14, padding: 16, borderWidth: 1, borderColor: newDeckGoalEnabled ? "rgba(74,222,128,0.3)" : "#2a2e36", marginBottom: 16 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={{ color: "white", fontWeight: "700", fontSize: 15 }}>Track Exam Readiness</Text>
+                  <Text style={{ color: "#A9BDDB", fontSize: 12, marginTop: 3 }}>
+                    Pace your daily cards based on a target date.
+                  </Text>
+                </View>
+                <Switch
+                  value={newDeckGoalEnabled}
+                  onValueChange={setNewDeckGoalEnabled}
+                  trackColor={{ false: "#2a2e36", true: "#4ade80" }}
+                  thumbColor={newDeckGoalEnabled ? "#fff" : "#A9BDDB"}
+                />
+              </View>
+
+              {newDeckGoalEnabled && (
+                <View style={{ marginTop: 16 }}>
+                  <Text style={{ color: "#A9BDDB", fontSize: 12, marginBottom: 8 }}>Target Date</Text>
+                  <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                    <TextInput
+                      value={newDeckGoalMonth}
+                      onChangeText={(t) => setNewDeckGoalMonth(t.replace(/\D/g, "").slice(0, 2))}
+                      placeholder="MM"
+                      placeholderTextColor="#555"
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      style={{ flex: 1, backgroundColor: "#0f172a", color: "white", borderRadius: 10, padding: 12, borderWidth: 1, borderColor: "#2a2e36", textAlign: "center", fontSize: 16 }}
+                    />
+                    <Text style={{ color: "#555", fontSize: 18 }}>/</Text>
+                    <TextInput
+                      value={newDeckGoalDay}
+                      onChangeText={(t) => setNewDeckGoalDay(t.replace(/\D/g, "").slice(0, 2))}
+                      placeholder="DD"
+                      placeholderTextColor="#555"
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      style={{ flex: 1, backgroundColor: "#0f172a", color: "white", borderRadius: 10, padding: 12, borderWidth: 1, borderColor: "#2a2e36", textAlign: "center", fontSize: 16 }}
+                    />
+                    <Text style={{ color: "#555", fontSize: 18 }}>/</Text>
+                    <TextInput
+                      value={newDeckGoalYear}
+                      onChangeText={(t) => setNewDeckGoalYear(t.replace(/\D/g, "").slice(0, 4))}
+                      placeholder="YYYY"
+                      placeholderTextColor="#555"
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      style={{ flex: 2, backgroundColor: "#0f172a", color: "white", borderRadius: 10, padding: 12, borderWidth: 1, borderColor: "#2a2e36", textAlign: "center", fontSize: 16 }}
+                    />
+                  </View>
+                </View>
+              )}
+            </View>
+
+            <Text style={{ color: "#4a5568", fontSize: 12, lineHeight: 18, marginBottom: 24 }}>
+              You can always update or remove this goal from the deck's edit screen.
+            </Text>
+          </View>
+
+          {/* Footer buttons */}
+          <View style={{ padding: 24, paddingBottom: 40, gap: 10 }}>
+            <TouchableOpacity
+              onPress={handleSaveNewDeckGoal}
+              disabled={newDeckGoalSaving}
+              style={{ backgroundColor: newDeckGoalEnabled ? "#4ade80" : "#2a2e36", borderRadius: 12, padding: 16, alignItems: "center" }}
+            >
+              <Text style={{ color: newDeckGoalEnabled ? "#111" : "#A9BDDB", fontWeight: "700", fontSize: 16 }}>
+                {newDeckGoalSaving ? "Saving..." : newDeckGoalEnabled ? "Set Goal" : "No Goal"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setNewDeckGoalDeck(null)}
+              style={{ padding: 14, alignItems: "center" }}
+            >
+              <Text style={{ color: "#4a5568", fontSize: 15 }}>Skip for now</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       {/* EDIT DECK MODAL */}

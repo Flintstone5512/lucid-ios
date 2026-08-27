@@ -53,6 +53,123 @@ import {
 const SELF_BLOCK_KEY = "parentSelfBlockingEnabled";
 import { router, useFocusEffect } from "expo-router";
 
+const ANDROID_APP_NAMES: Record<string, string> = {
+  "com.instagram.android": "Instagram",
+  "com.zhiliaoapp.musically": "TikTok",
+  "com.twitter.android": "X / Twitter",
+  "com.google.android.youtube": "YouTube",
+  "com.facebook.katana": "Facebook",
+  "com.facebook.lite": "Facebook Lite",
+  "com.facebook.orca": "Messenger",
+};
+
+function BlockingStatusPanel({ report }: { report: any }) {
+  if (!report || report.lastReported == null) return null;
+
+  if (report.blockingActive === false) {
+    return (
+      <View style={blockingPanelStyles.warningBanner}>
+        <Text style={blockingPanelStyles.warningTitle}>🚫 Blocking Disabled</Text>
+        <Text style={blockingPanelStyles.warningBody}>
+          App blocking is currently turned off on this device.
+        </Text>
+      </View>
+    );
+  }
+
+  if (report.platform === "ios") {
+    const hasSelection = report.hasIOSSelection;
+    return (
+      <View style={blockingPanelStyles.container}>
+        <Text style={blockingPanelStyles.heading}>Blocking</Text>
+        {hasSelection ? (
+          <Text style={blockingPanelStyles.iosActive}>✓ Screen Time shield active</Text>
+        ) : (
+          <View style={blockingPanelStyles.warningBanner}>
+            <Text style={blockingPanelStyles.warningTitle}>⚠️ No Apps Selected</Text>
+            <Text style={blockingPanelStyles.warningBody}>
+              Screen Time is on but no apps have been selected to block.
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  // Android
+  const apps: string[] = report.blockedApps || [];
+  if (apps.length === 0) return null;
+
+  return (
+    <View style={blockingPanelStyles.container}>
+      <Text style={blockingPanelStyles.heading}>Currently Blocking</Text>
+      <View style={blockingPanelStyles.chipRow}>
+        {apps.map((pkg) => (
+          <View key={pkg} style={blockingPanelStyles.chip}>
+            <Text style={blockingPanelStyles.chipText}>
+              {ANDROID_APP_NAMES[pkg] ?? pkg}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const blockingPanelStyles = StyleSheet.create({
+  container: {
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  heading: {
+    color: "#A9BDDB",
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  chip: {
+    backgroundColor: "#1b2540",
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  chipText: {
+    color: "#D86732",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  iosActive: {
+    color: "#4CAF50",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  warningBanner: {
+    backgroundColor: "#2a1a0e",
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: "#D86732",
+  },
+  warningTitle: {
+    color: "#D86732",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  warningBody: {
+    color: "#A9BDDB",
+    fontSize: 12,
+    marginTop: 2,
+  },
+});
+
 export default function ParentDashboard() {
   const [data, setData] = useState<any>(null);
   const [code, setCode] = useState("");
@@ -674,6 +791,8 @@ function ChildCard({ child, reload, onImportAnki, onImportExcel }: any) {
           </Text>
         </View>
       )}
+
+      <BlockingStatusPanel report={child.enforcementReport} />
 
       <Text style={styles.meta}>
         🔥 Streak: {child.streak?.currentStreak || 0}
