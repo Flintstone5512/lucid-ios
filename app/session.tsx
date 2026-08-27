@@ -55,7 +55,7 @@ function CardContent({
   const videos = media?.filter((m) => m.type === "video") ?? [];
 
   return (
-    <View>
+    <View style={{ width: "100%", alignSelf: "stretch" }}>
       {images.map((m, i) => (
         <Image
           key={i}
