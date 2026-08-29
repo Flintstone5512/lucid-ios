@@ -10,9 +10,14 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { getDecks } from "../../services/api";
-import { scheduleChildTest, scheduleLocalTestNotification } from "../../services/testModeService";
+import {
+  scheduleChildTest,
+  scheduleLocalTestNotification,
+  getMasteredCards,
+} from "../../services/testModeService";
 import { useRefocusStore } from "../../store/useRefocusStore";
 import { LucidTheme } from "../../constants/lucidTheme";
+import TestCardConfigModal from "../../components/TestCardConfigModal";
 
 const SCHEDULE_OPTIONS = [
   { label: "Tomorrow", daysFromNow: 1 },
@@ -43,6 +48,13 @@ export default function TestSetupScreen() {
   const [scheduleIndex, setScheduleIndex] = useState<number | null>(null);
   const [scheduling, setScheduling] = useState(false);
 
+  // Test card config modal
+  const [configModalVisible, setConfigModalVisible] = useState(false);
+  const [sampleCard, setSampleCard] = useState<{ front: string; back: string } | null>(null);
+  const [loadingSample, setLoadingSample] = useState(false);
+  const [questionField, setQuestionField] = useState<"front" | "back">("front");
+  const [answerField, setAnswerField] = useState<"front" | "back">("back");
+
   useEffect(() => {
     getDecks()
       .then((d) => setDecks(Array.isArray(d) ? d : []))
@@ -50,15 +62,40 @@ export default function TestSetupScreen() {
       .finally(() => setLoading(false));
   }, []);
 
-  function handleStartTest() {
+  async function handleStartTest() {
     if (!selectedDeckId) {
       Alert.alert("Pick a deck", "Select a deck to test yourself on.");
       return;
     }
+    setLoadingSample(true);
+    setConfigModalVisible(true);
+    try {
+      const cards = await getMasteredCards(selectedDeckId);
+      const first = cards[0];
+      setSampleCard(first ? { front: first.front || "", back: first.back || "" } : null);
+    } catch {
+      setSampleCard(null);
+    } finally {
+      setLoadingSample(false);
+    }
+  }
+
+  function handleConfirmConfig() {
+    setConfigModalVisible(false);
     router.push({
       pathname: "/test/[deckId]",
-      params: { deckId: selectedDeckId, deckName: selectedDeckName },
+      params: {
+        deckId: selectedDeckId!,
+        deckName: selectedDeckName,
+        questionField,
+        answerField,
+      },
     });
+  }
+
+  function handleCancelConfig() {
+    setConfigModalVisible(false);
+    setSampleCard(null);
   }
 
   async function handleScheduleChildTest() {
@@ -246,6 +283,17 @@ export default function TestSetupScreen() {
           )}
         </>
       )}
+      <TestCardConfigModal
+        visible={configModalVisible}
+        sampleCard={sampleCard}
+        loadingSample={loadingSample}
+        questionField={questionField}
+        answerField={answerField}
+        onQuestionFieldChange={setQuestionField}
+        onAnswerFieldChange={setAnswerField}
+        onConfirm={handleConfirmConfig}
+        onCancel={handleCancelConfig}
+      />
     </ScrollView>
   );
 }

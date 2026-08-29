@@ -23,11 +23,13 @@ import { useRefocusStore } from "../../store/useRefocusStore";
 import { LucidTheme } from "../../constants/lucidTheme";
 
 export default function TestSessionScreen() {
-  const { deckId, deckName, childId, childName } = useLocalSearchParams<{
+  const { deckId, deckName, childId, childName, questionField, answerField } = useLocalSearchParams<{
     deckId: string;
     deckName: string;
     childId?: string;
     childName?: string;
+    questionField?: string;
+    answerField?: string;
   }>();
   const { context } = useRefocusStore();
   const role = context?.role;
@@ -54,7 +56,10 @@ export default function TestSessionScreen() {
         );
         return;
       }
-      setQuestions(generateTestQuestions(cards));
+      setQuestions(generateTestQuestions(cards, {
+        questionField: (questionField as "front" | "back") || "front",
+        answerField: (answerField as "front" | "back") || "back",
+      }));
       setLoading(false);
     }
     loadQuestions();

@@ -88,22 +88,27 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-export function generateTestQuestions(cards: any[]): TestQuestion[] {
-  const allBacks = cards.map((c) => c.back).filter(Boolean);
+export function generateTestQuestions(
+  cards: any[],
+  opts?: { questionField?: "front" | "back"; answerField?: "front" | "back" }
+): TestQuestion[] {
+  const qField = opts?.questionField || "front";
+  const aField = opts?.answerField || "back";
+
+  const allAnswers = cards.map((c) => c[aField]).filter(Boolean);
 
   return shuffle(cards).map((card) => {
     const cardId = card._id || card.id;
-    const front = card.front || "";
-    const back = card.back || "";
+    const front = card[qField] || "";
+    const back = card[aField] || "";
 
-    const canDoMC = allBacks.length >= 4;
-    // Alternate types; use MC roughly 60% of the time when possible
+    const canDoMC = allAnswers.length >= 4;
     const type: "multiple_choice" | "free_recall" =
       canDoMC && Math.random() < 0.6 ? "multiple_choice" : "free_recall";
 
     let options: string[] = [];
     if (type === "multiple_choice") {
-      const distractors = shuffle(allBacks.filter((b) => b !== back)).slice(0, 3);
+      const distractors = shuffle(allAnswers.filter((b) => b !== back)).slice(0, 3);
       options = shuffle([back, ...distractors]);
     } else {
       options = [back];
