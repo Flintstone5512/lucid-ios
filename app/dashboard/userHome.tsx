@@ -8,16 +8,19 @@ import {
   AppState,
   Linking,
   Platform,
+  Modal,
+  ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
 import * as Notifications from "expo-notifications";
 
 import { useRefocusStore } from "../../store/useRefocusStore";
-import { getSharedState, sendHeartbeat } from "../../services/api";
+import { getSharedState, sendHeartbeat, getDecks } from "../../services/api";
 import MetricCard from "../../components/MetricCard";
 import UpgradeButton from "../../components/UpgradeButton";
 import { LucidTheme } from "../../constants/lucidTheme";
 import { hasIOSAppSelection } from "../../modules/screen-time";
+import { getMasteredCards } from "../../services/testModeService";
 import { isSmartBlockingEnabled } from "../../services/smartBlockingService";
 
 // Must stay in sync with useEnforcement.ts
@@ -59,6 +62,75 @@ export default function UserDashboard() {
   const { plan } = useRefocusStore();
   const [notificationsGranted, setNotificationsGranted] = useState(true);
 
+  // Test mode launch modal state
+  const [testModalVisible, setTestModalVisible] = useState(false);
+  const [testDecks, setTestDecks] = useState<any[]>([]);
+  const [testDecksLoading, setTestDecksLoading] = useState(false);
+  const [testSelectedDeckId, setTestSelectedDeckId] = useState<string | null>(null);
+  const [testSelectedDeckName, setTestSelectedDeckName] = useState("");
+  const [testQuestionField, setTestQuestionField] = useState<"front" | "back">("front");
+  const [testAnswerField, setTestAnswerField] = useState<"front" | "back">("back");
+  const [testSampleCard, setTestSampleCard] = useState<{ front: string; back: string } | null>(null);
+  const [testSampleLoading, setTestSampleLoading] = useState(false);
+
+  async function openTestModal() {
+    setTestModalVisible(true);
+    setTestSelectedDeckId(null);
+    setTestSelectedDeckName("");
+    setTestSampleCard(null);
+    setTestQuestionField("front");
+    setTestAnswerField("back");
+    setTestDecksLoading(true);
+    try {
+      const decks = await getDecks();
+      setTestDecks(Array.isArray(decks) ? decks : []);
+    } catch {
+      setTestDecks([]);
+    } finally {
+      setTestDecksLoading(false);
+    }
+  }
+
+  async function selectTestDeck(deckId: string, deckName: string) {
+    setTestSelectedDeckId(deckId);
+    setTestSelectedDeckName(deckName);
+    setTestSampleCard(null);
+    setTestSampleLoading(true);
+    try {
+      const cards = await getMasteredCards(deckId);
+      const first = cards[0];
+      setTestSampleCard(first ? { front: first.front || "", back: first.back || "" } : null);
+    } catch {
+      setTestSampleCard(null);
+    } finally {
+      setTestSampleLoading(false);
+    }
+  }
+
+  function selectTestQuestion(f: "front" | "back") {
+    setTestQuestionField(f);
+    if (testAnswerField === f) setTestAnswerField(f === "front" ? "back" : "front");
+  }
+
+  function selectTestAnswer(f: "front" | "back") {
+    setTestAnswerField(f);
+    if (testQuestionField === f) setTestQuestionField(f === "front" ? "back" : "front");
+  }
+
+  function confirmTestLaunch() {
+    if (!testSelectedDeckId) return;
+    setTestModalVisible(false);
+    router.push({
+      pathname: "/test/[deckId]",
+      params: {
+        deckId: testSelectedDeckId,
+        deckName: testSelectedDeckName,
+        questionField: testQuestionField,
+        answerField: testAnswerField,
+      },
+    });
+  }
+
   async function checkNotificationPermission() {
     if (Platform.OS !== "ios") return;
     const { status } = await Notifications.getPermissionsAsync();
@@ -94,6 +166,7 @@ export default function UserDashboard() {
   }, []);
 
   return (
+    <>
     <ScrollView
       style={styles.container}
       contentContainerStyle={{ paddingBottom: 40 }}
@@ -201,7 +274,7 @@ export default function UserDashboard() {
           Quiz yourself on cards you've already mastered.
         </Text>
         <Pressable
-          onPress={() => router.push("/test")}
+          onPress={openTestModal}
           style={styles.cta}
         >
           <Text style={styles.ctaText}>Start a Test</Text>
@@ -241,6 +314,177 @@ export default function UserDashboard() {
         </View>
       )}
     </ScrollView>
+
+    {/* =========================
+       🧪 TEST LAUNCH MODAL
+    ========================= */}
+    <Modal
+      visible={testModalVisible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={() => setTestModalVisible(false)}
+    >
+      <View style={{ flex: 1, backgroundColor: "#0e1424" }}>
+        {/* Header */}
+        <View style={{ paddingTop: 56, paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: "#1b2540" }}>
+          <Text style={{ color: "white", fontSize: 22, fontWeight: "800", marginBottom: 4 }}>Start a Test</Text>
+          <Text style={{ color: "#A9BDDB", fontSize: 13 }}>Pick a deck and configure your card sides.</Text>
+        </View>
+
+        <ScrollView style={{ flex: 1, padding: 20 }} contentContainerStyle={{ paddingBottom: 32 }}>
+
+          {/* Step 1: Deck picker */}
+          <Text style={{ color: "#D86732", fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 10 }}>
+            Select Deck
+          </Text>
+          {testDecksLoading ? (
+            <ActivityIndicator color="#D86732" style={{ marginVertical: 16 }} />
+          ) : testDecks.length === 0 ? (
+            <Text style={{ color: "#6b7a9b", fontStyle: "italic", fontSize: 13 }}>
+              No decks found. Create one in the Decks tab.
+            </Text>
+          ) : (
+            testDecks.map((deck) => {
+              const id = deck._id || deck.id;
+              const name = deck.name || "Unnamed";
+              const selected = testSelectedDeckId === id;
+              return (
+                <Pressable
+                  key={id}
+                  onPress={() => selectTestDeck(id, name)}
+                  style={{
+                    backgroundColor: selected ? "#2a1800" : "#1b2540",
+                    borderRadius: 12,
+                    padding: 14,
+                    marginBottom: 8,
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    borderWidth: 2,
+                    borderColor: selected ? "#D86732" : "transparent",
+                  }}
+                >
+                  <Text style={{ color: selected ? "#D86732" : "white", fontWeight: "700", fontSize: 14 }}>{name}</Text>
+                  <Text style={{ color: "#6b7a9b", fontSize: 12 }}>
+                    {deck.cardCount || deck.cardsCount || deck.totalCards || deck.count || 0} cards
+                  </Text>
+                </Pressable>
+              );
+            })
+          )}
+
+          {/* Step 2: Card side config (only shown once a deck is selected) */}
+          {testSelectedDeckId && (
+            <>
+              <Text style={{ color: "#D86732", fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6, marginTop: 24, marginBottom: 10 }}>
+                Question (shown as the prompt)
+              </Text>
+              {(["front", "back"] as const).map((field) => {
+                const selected = testQuestionField === field;
+                return (
+                  <Pressable
+                    key={field}
+                    onPress={() => selectTestQuestion(field)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      backgroundColor: "#1b2540",
+                      borderRadius: 12,
+                      padding: 14,
+                      gap: 12,
+                      marginBottom: 8,
+                      borderWidth: 2,
+                      borderColor: selected ? "#D86732" : "transparent",
+                    }}
+                  >
+                    <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: selected ? "#D86732" : "#6b7a9b", justifyContent: "center", alignItems: "center" }}>
+                      {selected && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#D86732" }} />}
+                    </View>
+                    <Text style={{ color: selected ? "#D86732" : "#A9BDDB", fontSize: 15, fontWeight: "600" }}>
+                      {field === "front" ? "Front field" : "Back field"}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+
+              <Text style={{ color: "#6EADEB", fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6, marginTop: 20, marginBottom: 10 }}>
+                Answer (correct answer &amp; options)
+              </Text>
+              {(["front", "back"] as const).map((field) => {
+                const selected = testAnswerField === field;
+                return (
+                  <Pressable
+                    key={field}
+                    onPress={() => selectTestAnswer(field)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      backgroundColor: "#1b2540",
+                      borderRadius: 12,
+                      padding: 14,
+                      gap: 12,
+                      marginBottom: 8,
+                      borderWidth: 2,
+                      borderColor: selected ? "#6EADEB" : "transparent",
+                    }}
+                  >
+                    <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: selected ? "#6EADEB" : "#6b7a9b", justifyContent: "center", alignItems: "center" }}>
+                      {selected && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#6EADEB" }} />}
+                    </View>
+                    <Text style={{ color: selected ? "#6EADEB" : "#A9BDDB", fontSize: 15, fontWeight: "600" }}>
+                      {field === "front" ? "Front field" : "Back field"}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+
+              {/* Live preview */}
+              <Text style={{ color: "#D86732", fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6, marginTop: 24, marginBottom: 10 }}>
+                Preview
+              </Text>
+              {testSampleLoading ? (
+                <View style={{ height: 100, justifyContent: "center", alignItems: "center", backgroundColor: "#1b2540", borderRadius: 16, gap: 10 }}>
+                  <ActivityIndicator color="#D86732" />
+                  <Text style={{ color: "#6b7a9b", fontSize: 13 }}>Loading sample card…</Text>
+                </View>
+              ) : (
+                <View style={{ gap: 10 }}>
+                  <View style={{ backgroundColor: "#1b2540", borderRadius: 14, padding: 16 }}>
+                    <Text style={{ color: "#A9BDDB", fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>QUESTION</Text>
+                    <Text style={{ color: "white", fontSize: 15, fontWeight: "600", lineHeight: 22 }} numberOfLines={4}>
+                      {testSampleCard ? testSampleCard[testQuestionField] : "No mastered cards yet — complete study sessions first."}
+                    </Text>
+                  </View>
+                  <View style={{ backgroundColor: "#0f291a", borderRadius: 14, padding: 16, borderWidth: 1, borderColor: "#16a34a" }}>
+                    <Text style={{ color: "#4ade80", fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>ANSWER</Text>
+                    <Text style={{ color: "white", fontSize: 15, fontWeight: "600", lineHeight: 22 }} numberOfLines={3}>
+                      {testSampleCard ? testSampleCard[testAnswerField] : "—"}
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </>
+          )}
+        </ScrollView>
+
+        {/* Footer */}
+        <View style={{ padding: 20, paddingBottom: 44, gap: 12, borderTopWidth: 1, borderTopColor: "#1b2540" }}>
+          <Pressable
+            onPress={confirmTestLaunch}
+            disabled={!testSelectedDeckId}
+            style={{ backgroundColor: testSelectedDeckId ? "#D86732" : "#2a2e36", padding: 18, borderRadius: 16, alignItems: "center" }}
+          >
+            <Text style={{ color: testSelectedDeckId ? "#fff" : "#6b7a9b", fontWeight: "800", fontSize: 16 }}>
+              Start Test
+            </Text>
+          </Pressable>
+          <Pressable onPress={() => setTestModalVisible(false)}>
+            <Text style={{ color: "#A9BDDB", textAlign: "center", fontSize: 14, fontWeight: "600" }}>Cancel</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 

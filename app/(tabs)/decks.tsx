@@ -1423,15 +1423,29 @@ Examples:
       >
         <View style={{ flex: 1, backgroundColor: "#0e1424" }}>
           <View style={{ padding: 24, paddingTop: 56, flex: 1 }}>
+            {/* Step indicator */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 20 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#4ade80", alignItems: "center", justifyContent: "center" }}>
+                  <Text style={{ color: "#111", fontSize: 11, fontWeight: "800" }}>✓</Text>
+                </View>
+                <Text style={{ color: "#4ade80", fontSize: 12, fontWeight: "700" }}>Deck Imported</Text>
+              </View>
+              <View style={{ height: 1, width: 20, backgroundColor: "#2a2e36" }} />
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#D86732", alignItems: "center", justifyContent: "center" }}>
+                  <Text style={{ color: "#111", fontSize: 11, fontWeight: "800" }}>2</Text>
+                </View>
+                <Text style={{ color: "#D86732", fontSize: 12, fontWeight: "700" }}>Study Goal</Text>
+              </View>
+            </View>
+
             {/* Header */}
-            <Text style={{ color: "#4ade80", fontSize: 13, fontWeight: "700", letterSpacing: 1, marginBottom: 6 }}>
-              OPTIONAL
-            </Text>
             <Text style={{ color: "white", fontSize: 22, fontWeight: "800", marginBottom: 8 }}>
               Set a Study Goal
             </Text>
             <Text style={{ color: "#A9BDDB", fontSize: 14, lineHeight: 21, marginBottom: 24 }}>
-              "{newDeckGoalDeck?.name}" was added to your library.
+              "{newDeckGoalDeck?.name}" was added to your library. Add a goal to activate Smart Blocking.
             </Text>
 
             {/* Smart Blocking explanation */}
@@ -1506,21 +1520,21 @@ Examples:
 
           {/* Footer buttons */}
           <View style={{ padding: 24, paddingBottom: 40, gap: 10 }}>
-            <TouchableOpacity
+            <Pressable
               onPress={handleSaveNewDeckGoal}
               disabled={newDeckGoalSaving}
-              style={{ backgroundColor: newDeckGoalEnabled ? "#4ade80" : "#2a2e36", borderRadius: 12, padding: 16, alignItems: "center" }}
+              style={{ backgroundColor: newDeckGoalEnabled ? "#4ade80" : "#D86732", borderRadius: 12, padding: 16, alignItems: "center" }}
             >
-              <Text style={{ color: newDeckGoalEnabled ? "#111" : "#A9BDDB", fontWeight: "700", fontSize: 16 }}>
-                {newDeckGoalSaving ? "Saving..." : newDeckGoalEnabled ? "Set Goal" : "No Goal"}
+              <Text style={{ color: "#111", fontWeight: "700", fontSize: 16 }}>
+                {newDeckGoalSaving ? "Saving..." : newDeckGoalEnabled ? "Set Goal & Continue" : "Continue Without Goal"}
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+            </Pressable>
+            <Pressable
               onPress={() => setNewDeckGoalDeck(null)}
               style={{ padding: 14, alignItems: "center" }}
             >
               <Text style={{ color: "#4a5568", fontSize: 15 }}>Skip for now</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </Modal>
