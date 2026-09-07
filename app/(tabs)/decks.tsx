@@ -12,6 +12,7 @@ import {
   Platform,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import { router } from "expo-router";
 
 import { generateDeck, importAnkiDeck, previewAnkiDeck, importExcelDeck, previewExcelDeck, remapDeckFields, previewAIDeck, previewAIDeckFromFile, confirmAIDeck, CardType, AnkiPreview, AIPreviewCard } from "../../services/aiDeckService";
 import { AnkiFieldModal } from "../../components/AnkiFieldModal";
@@ -806,6 +807,33 @@ export default function DecksScreen() {
           </Text>
         </Text>
       </View>
+
+      {/* HOMEWORK HUB */}
+      <Pressable
+        onPress={() => router.push("/homework-hub")}
+        style={{
+          marginTop: 20,
+          backgroundColor: "#161b22",
+          borderWidth: 1,
+          borderColor: "#D86732",
+          borderRadius: 18,
+          padding: 18,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 14,
+        }}
+      >
+        <Text style={{ fontSize: 32 }}>📚</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: "#D86732", fontWeight: "800", fontSize: 16 }}>
+            Homework Hub
+          </Text>
+          <Text style={{ color: "#A9BDDB", fontSize: 13, marginTop: 3, lineHeight: 18 }}>
+            Upload a homework assignment, answer the questions, and get a smart study session for anything you miss.
+          </Text>
+        </View>
+        <Text style={{ color: "#D86732", fontSize: 20 }}>→</Text>
+      </Pressable>
 
       {/* AI GENERATE */}
       <Text style={{ color: "#D86732", marginTop: 24, fontWeight: "700" }}>
