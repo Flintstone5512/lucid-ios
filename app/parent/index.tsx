@@ -38,6 +38,16 @@ import {
   generateLinkCode,
   updateParentFocusMode,
 } from "../../services/parentService";
+import {
+  getParentWallet,
+  topUpWallet,
+  approveRewardClaim,
+  denyRewardClaim,
+  getMilestoneRewardConfigs,
+  setMilestoneRewardConfig,
+  type WalletSummary,
+  type MilestoneRewardConfig,
+} from "../../services/walletService";
 
 import { useRefocusStore } from "../../store/useRefocusStore";
 import UpgradeButton from "../../components/UpgradeButton";
@@ -170,6 +180,69 @@ const blockingPanelStyles = StyleSheet.create({
   },
 });
 
+const walletStyles = StyleSheet.create({
+  balanceRow:   { flexDirection: "row", alignItems: "center", backgroundColor: "#0e1424", borderRadius: 14, padding: 16 },
+  balanceLabel: { color: "#A9BDDB", fontSize: 12, marginBottom: 4 },
+  balanceAmount:{ color: "#22c55e", fontSize: 28, fontWeight: "800" },
+  topUpInput:   { backgroundColor: "#1b2540", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: "#fff", fontSize: 15, borderWidth: 1, borderColor: "#2a3a5c", marginBottom: 8 },
+  topUpBtn:     { backgroundColor: "#ff8a3d", borderRadius: 10, paddingVertical: 10, alignItems: "center" },
+  topUpBtnText: { color: "#0B0B0F", fontWeight: "800", fontSize: 14 },
+  subsectionTitle:{ color: "#D86732", fontWeight: "700", fontSize: 14, marginBottom: 8 },
+  configHint:     { color: "#A9BDDB", fontSize: 11, marginBottom: 10, lineHeight: 16 },
+  claimRow:    { flexDirection: "row", alignItems: "center", backgroundColor: "#0e1424", borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#F8C37333" },
+  claimChild:  { color: "#fff", fontWeight: "700", fontSize: 14 },
+  claimMilestone:{ color: "#A9BDDB", fontSize: 12, marginTop: 2 },
+  claimAmount: { color: "#F8C373", fontWeight: "800", fontSize: 16 },
+  approveBtn:  { backgroundColor: "#22c55e", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
+  approveBtnText:{ color: "#0B0B0F", fontWeight: "800", fontSize: 12 },
+  denyBtn:     { backgroundColor: "#2a3a5c", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
+  denyBtnText: { color: "#ef4444", fontWeight: "700", fontSize: 12 },
+  childConfigName:{ color: "#fff", fontWeight: "700", fontSize: 13, marginBottom: 6 },
+  configRow:   { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
+  configDay:   { color: "#A9BDDB", fontSize: 12, width: 48 },
+  configInput: { flex: 1, backgroundColor: "#1b2540", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, color: "#fff", fontSize: 13, borderWidth: 1, borderColor: "#2a3a5c" },
+  configSaveBtn:  { backgroundColor: "#1b2540", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: "#ff8a3d44" },
+  configSaveBtnText:{ color: "#ff8a3d", fontWeight: "700", fontSize: 12 },
+  txRow:      { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#1b2540" },
+  txDesc:     { color: "#A9BDDB", fontSize: 12 },
+  txAmount:   { fontWeight: "700", fontSize: 13 },
+  txPositive: { color: "#22c55e" },
+  txNegative: { color: "#ef4444" },
+});
+
+function MilestoneConfigRow({
+  childId, day, defaultLabel, initialAmountCents, onSave,
+}: {
+  childId: string; day: number; defaultLabel: string; initialAmountCents: number;
+  onSave: (cents: number) => Promise<void>;
+}) {
+  const [localAmt, setLocalAmt] = useState(initialAmountCents > 0 ? String(initialAmountCents / 100) : "");
+  return (
+    <View style={walletStyles.configRow}>
+      <Text style={walletStyles.configDay}>Day {day}</Text>
+      <TextInput
+        style={walletStyles.configInput}
+        placeholder={defaultLabel}
+        placeholderTextColor="#4a5568"
+        keyboardType="numeric"
+        value={localAmt}
+        onChangeText={setLocalAmt}
+      />
+      <Pressable
+        style={walletStyles.configSaveBtn}
+        onPress={async () => {
+          const cents = Math.round(parseFloat(localAmt) * 100);
+          if (!cents || cents < 0) return;
+          try { await onSave(cents); }
+          catch (err: any) { Alert.alert("Error", err?.response?.data?.error ?? "Could not save"); }
+        }}
+      >
+        <Text style={walletStyles.configSaveBtnText}>Save</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export default function ParentDashboard() {
   const [data, setData] = useState<any>(null);
   const [code, setCode] = useState("");
@@ -199,6 +272,11 @@ export default function ParentDashboard() {
   const [excelFront, setExcelFront] = useState<number[]>([0]);
   const [excelBack, setExcelBack] = useState<number[]>([1]);
   const [excelDeckName, setExcelDeckName] = useState("");
+
+  const [wallet, setWallet] = useState<WalletSummary | null>(null);
+  const [walletConfigs, setWalletConfigs] = useState<MilestoneRewardConfig[]>([]);
+  const [topUpAmount, setTopUpAmount] = useState("");
+  const [walletLoading, setWalletLoading] = useState(false);
 
   const children = context?.account?.children || [];
   const maxChildren = limits?.maxChildren ?? 0;
@@ -231,8 +309,14 @@ export default function ParentDashboard() {
 
   async function load() {
     try {
-      const res = await getParentDashboard();
+      const [res, walletRes, configsRes] = await Promise.all([
+        getParentDashboard(),
+        getParentWallet().catch(() => null),
+        getMilestoneRewardConfigs().catch(() => []),
+      ]);
       setData(res);
+      if (walletRes) setWallet(walletRes);
+      setWalletConfigs(configsRes);
 
       if (!alertedRef.current) {
         const inactive = (res.children || []).filter((c: any) => c.isAppActive === false);
@@ -609,6 +693,166 @@ export default function ParentDashboard() {
         {!!code && (
           <View style={styles.codeBox}>
             <Text style={styles.code}>{code}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* =========================
+         🔥 REWARD WALLET
+      ========================= */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>💰 Reward Wallet</Text>
+        <Text style={styles.helper}>
+          Fund your children's milestone rewards. When a child earns a reward, you'll see it here to approve. The 180-day milestone is paid by Lucid — all others come from your wallet.
+        </Text>
+
+        {/* Balance row */}
+        <View style={walletStyles.balanceRow}>
+          <View>
+            <Text style={walletStyles.balanceLabel}>Available Balance</Text>
+            <Text style={walletStyles.balanceAmount}>
+              ${((wallet?.balanceCents ?? 0) / 100).toFixed(2)}
+            </Text>
+          </View>
+          <View style={{ flex: 1, paddingLeft: 16 }}>
+            <TextInput
+              style={walletStyles.topUpInput}
+              placeholder="Amount (e.g. 20)"
+              placeholderTextColor="#4a5568"
+              keyboardType="numeric"
+              value={topUpAmount}
+              onChangeText={setTopUpAmount}
+            />
+            <Pressable
+              style={walletStyles.topUpBtn}
+              onPress={async () => {
+                const cents = Math.round(parseFloat(topUpAmount) * 100);
+                if (!cents || cents < 100) {
+                  Alert.alert("Minimum top-up is $1");
+                  return;
+                }
+                setWalletLoading(true);
+                try {
+                  const res = await topUpWallet(cents);
+                  setWallet((w) => w ? { ...w, balanceCents: res.balanceCents } : null);
+                  setTopUpAmount("");
+                  Alert.alert("✅ Wallet Topped Up", `$${(cents / 100).toFixed(2)} added to your reward wallet.`);
+                } catch (err: any) {
+                  Alert.alert("Error", err?.response?.data?.error ?? "Top-up failed");
+                } finally {
+                  setWalletLoading(false);
+                }
+              }}
+            >
+              <Text style={walletStyles.topUpBtnText}>
+                {walletLoading ? "..." : "Add Funds"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Pending claims */}
+        {(wallet?.pendingClaims?.length ?? 0) > 0 && (
+          <View style={{ marginTop: 16 }}>
+            <Text style={walletStyles.subsectionTitle}>Pending Approval</Text>
+            {wallet!.pendingClaims.map((claim) => (
+              <View key={claim._id} style={walletStyles.claimRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={walletStyles.claimChild}>{claim.childName}</Text>
+                  <Text style={walletStyles.claimMilestone}>
+                    Day {claim.milestoneDay} — {claim.milestoneName ?? "Milestone"}
+                  </Text>
+                </View>
+                <Text style={walletStyles.claimAmount}>
+                  ${(claim.amountCents / 100).toFixed(0)}
+                </Text>
+                <View style={{ flexDirection: "row", gap: 8, marginLeft: 8 }}>
+                  <Pressable
+                    style={walletStyles.approveBtn}
+                    onPress={async () => {
+                      try {
+                        await approveRewardClaim(claim._id);
+                        Alert.alert("✅ Approved!", `${claim.childName}'s reward has been approved.`);
+                        load();
+                      } catch (err: any) {
+                        Alert.alert("Error", err?.response?.data?.error ?? "Could not approve");
+                      }
+                    }}
+                  >
+                    <Text style={walletStyles.approveBtnText}>Approve</Text>
+                  </Pressable>
+                  <Pressable
+                    style={walletStyles.denyBtn}
+                    onPress={() => {
+                      Alert.alert("Deny Reward?", "The child's request will be denied. They can request again.", [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Deny", style: "destructive", onPress: async () => {
+                          try {
+                            await denyRewardClaim(claim._id);
+                            load();
+                          } catch {}
+                        }},
+                      ]);
+                    }}
+                  >
+                    <Text style={walletStyles.denyBtnText}>Deny</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Reward amount config per child per milestone */}
+        {children.length > 0 && (
+          <View style={{ marginTop: 16 }}>
+            <Text style={walletStyles.subsectionTitle}>Set Reward Amounts</Text>
+            <Text style={walletStyles.configHint}>
+              Customize how much each child earns per milestone. Defaults: 14d=$5 · 30d=$10 · 60d=$15 · 90d=$25 · 365d=$50
+            </Text>
+            {children.map((child: any) => {
+              const PARENT_MILESTONES = [14, 30, 60, 90, 365];
+              return (
+                <View key={child.userId} style={{ marginTop: 10 }}>
+                  <Text style={walletStyles.childConfigName}>{child.name}</Text>
+                  {PARENT_MILESTONES.map((day, idx) => {
+                    const existing = walletConfigs.find(
+                      (c) => c.childUserId === child.userId && c.milestoneDay === day
+                    );
+                    return (
+                      <MilestoneConfigRow
+                        key={`${child.userId}-${day}`}
+                        childId={child.userId}
+                        day={day}
+                        defaultLabel={`$${[5, 10, 15, 25, 50][idx]}`}
+                        initialAmountCents={existing?.amountCents ?? 0}
+                        onSave={async (cents) => {
+                          await setMilestoneRewardConfig(child.userId, day, cents);
+                          load();
+                        }}
+                      />
+                    );
+                  })}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Recent transactions */}
+        {(wallet?.recentTransactions?.length ?? 0) > 0 && (
+          <View style={{ marginTop: 16 }}>
+            <Text style={walletStyles.subsectionTitle}>Recent Activity</Text>
+            {wallet!.recentTransactions.slice(0, 5).map((tx) => (
+              <View key={tx._id} style={walletStyles.txRow}>
+                <Text style={walletStyles.txDesc}>
+                  {tx.type === "topup" ? "➕" : "💸"} {tx.description || tx.type}
+                </Text>
+                <Text style={[walletStyles.txAmount, tx.type === "topup" ? walletStyles.txPositive : walletStyles.txNegative]}>
+                  {tx.type === "topup" ? "+" : "-"}${(tx.amountCents / 100).toFixed(2)}
+                </Text>
+              </View>
+            ))}
           </View>
         )}
       </View>
@@ -1283,3 +1527,4 @@ const styles = StyleSheet.create({
     zIndex: 999,
   },
 });
+

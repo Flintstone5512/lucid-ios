@@ -16,6 +16,7 @@ import {
 import { refreshUserContext } from "../services/contextService";
 import { cancelMotivationalNotification } from "../services/motivationalNotificationService";
 import { loadMode } from "../services/settingsStorage";
+import { getOnboardingComplete } from "../services/storage";
 import { useRefocusStore } from "../store/useRefocusStore";
 import { ensurePermissions } from "../utils/ensurePermissions";
 
@@ -233,6 +234,10 @@ async function handleDeepLink(url: string) {
 
     async function checkIOSScreenTime() {
       try {
+        const token = await bootstrapAuthToken();
+        const onboarded = await getOnboardingComplete();
+        if (!token || !onboarded) return; // let splash.tsx handle routing
+
         const authStatus = await getIOSAuthorizationStatus();
         if (authStatus?.status === "approved") {
           Notifications.requestPermissionsAsync().catch(() => {});
@@ -262,6 +267,10 @@ async function handleDeepLink(url: string) {
     setAndroidPermChecked(true);
 
     async function checkAndroid() {
+      const token = await bootstrapAuthToken();
+      const onboarded = await getOnboardingComplete();
+      if (!token || !onboarded) return; // let splash.tsx handle routing
+
       const ok = await refreshPermissions();
       if (!ok) {
         router.replace("/screens/AndroidPermissionsSetupScreen");

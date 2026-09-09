@@ -43,7 +43,7 @@ export default function LoginScreen() {
         }
       }
 
-      router.replace("/(tabs)");
+      router.replace("/splash");
     } catch (err) {
       console.error(err);
       alert("Network error");

@@ -18,6 +18,7 @@ type RefocusState = {
   // Rewards economy
   coins: number;
   skipPasses: number;
+  qualifyingTestsCount: number; // tests scored ≥80%, required alongside streak for milestone claims
 
   unlockedUntil: number;
   selectedDeckId: string | null;
@@ -36,6 +37,7 @@ type RefocusState = {
   setShuffleDeckIds: (ids: string[]) => void;
   setCoins: (coins: number) => void;
   setSkipPasses: (count: number) => void;
+  setQualifyingTestsCount: (count: number) => void;
 };
 
 export const useRefocusStore = create<RefocusState>((set) => ({
@@ -52,6 +54,7 @@ export const useRefocusStore = create<RefocusState>((set) => ({
 
   coins: 0,
   skipPasses: 0,
+  qualifyingTestsCount: 0,
 
   unlockedUntil: 0,
   selectedDeckId: null,
@@ -90,6 +93,8 @@ export const useRefocusStore = create<RefocusState>((set) => ({
   setCoins: (coins) => set({ coins }),
 
   setSkipPasses: (count) => set({ skipPasses: count }),
+
+  setQualifyingTestsCount: (count) => set({ qualifyingTestsCount: count }),
 
   setStatePatch: (patch) =>
     set((state) => ({

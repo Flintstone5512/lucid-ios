@@ -9,6 +9,7 @@ import {
 import { router } from "expo-router";
 
 import { joinWithCode } from "../../services/linkService";
+import { setOnboardingComplete } from "../../services/storage";
 
 export default function JoinScreen() {
   const [code, setCode] = useState("");
@@ -31,10 +32,9 @@ export default function JoinScreen() {
         return;
       }
 
+      await setOnboardingComplete(true);
       alert("Connected to parent 🎉");
-
-      // 🔥 go to app (will route as child automatically)
-      router.replace("/");
+      router.replace("/splash");
     } catch (err) {
       console.log(err);
       alert("Failed to join");
@@ -74,7 +74,10 @@ export default function JoinScreen() {
       </Pressable>
 
       {/* SKIP OPTION */}
-      <Pressable onPress={() => router.replace("/(tabs)")}>
+      <Pressable onPress={async () => {
+        await setOnboardingComplete(true);
+        router.replace("/splash");
+      }}>
         <Text style={styles.skip}>Skip for now</Text>
       </Pressable>
     </View>

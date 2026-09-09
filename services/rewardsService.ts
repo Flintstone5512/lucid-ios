@@ -28,6 +28,7 @@ export type RewardsBalance = {
   coins: number;
   skipPasses: number;
   pendingRewards: number;
+  qualifyingTestsCount: number; // tests where the child scored ≥80%
 };
 
 export type ParentBounty = {
