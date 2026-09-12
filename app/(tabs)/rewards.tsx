@@ -11,7 +11,13 @@ import {
 } from "react-native";
 import { LucidTheme } from "../../constants/lucidTheme";
 import { claimStreakMilestone, getRewardsBalance } from "../../services/rewardsService";
-import { getMyClaimStatuses, type WalletClaim } from "../../services/walletService";
+import {
+  getMyClaimStatuses,
+  getMyRewardBalance,
+  requestCashOut,
+  type WalletClaim,
+  type RewardBalance,
+} from "../../services/walletService";
 import { useRefocusStore } from "../../store/useRefocusStore";
 
 // ─── Static config (mirrors backend STREAK_MILESTONES) ────────────────────────
@@ -282,6 +288,8 @@ export default function RewardsScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [claimsByMilestone, setClaimsByMilestone] = useState<Map<number, WalletClaim>>(new Map());
+  const [rewardBalance, setRewardBalance] = useState<RewardBalance | null>(null);
+  const [cashingOut, setCashingOut] = useState(false);
 
   const xp             = usage?.xp ?? 0;
   const level          = Math.floor(xp / 100);
@@ -310,13 +318,15 @@ export default function RewardsScreen() {
 
   async function load() {
     try {
-      const [balance, claims] = await Promise.all([
+      const [balance, claims, rb] = await Promise.all([
         getRewardsBalance(),
         getMyClaimStatuses(),
+        getMyRewardBalance().catch(() => null),
       ]);
       setCoins(balance.coins ?? 0);
       setSkipPasses(balance.skipPasses ?? 0);
       setQualifyingTestsCount(balance.qualifyingTestsCount ?? 0);
+      if (rb) setRewardBalance(rb);
 
       const map = new Map<number, WalletClaim>();
       for (const c of claims) map.set(c.milestoneDay, c);
@@ -332,6 +342,22 @@ export default function RewardsScreen() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  }
+
+  async function handleCashOut() {
+    setCashingOut(true);
+    try {
+      await requestCashOut();
+      Alert.alert(
+        "💸 Cash Out Requested!",
+        "Your parent has been notified. Once they approve, a gift card will be sent to their email for you."
+      );
+      load();
+    } catch (err: any) {
+      Alert.alert("Not yet", err?.response?.data?.error ?? err?.message ?? "Could not request cash out.");
+    } finally {
+      setCashingOut(false);
+    }
   }
 
   function handleRedeem(itemId: string) {
@@ -428,6 +454,46 @@ export default function RewardsScreen() {
           )}
         </View>
       </View>
+
+      {/* ── Reward Balance / Cash Out ── */}
+      {rewardBalance && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>💵 Reward Balance</Text>
+          <Text style={[styles.sectionSub, { marginBottom: 12 }]}>
+            Milestone rewards approved by your parent accumulate here. Cash out once you reach $20.
+          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View>
+              <Text style={{ color: "#9ca3af", fontSize: 13 }}>Available</Text>
+              <Text style={{ color: "#fff", fontSize: 28, fontWeight: "700" }}>
+                ${(rewardBalance.balanceCents / 100).toFixed(2)}
+              </Text>
+              {!rewardBalance.canCashOut && (
+                <Text style={{ color: "#6b7280", fontSize: 12, marginTop: 2 }}>
+                  ${((rewardBalance.thresholdCents - rewardBalance.balanceCents) / 100).toFixed(2)} more to unlock cashout
+                </Text>
+              )}
+            </View>
+            <Pressable
+              style={[
+                cashOutCardStyles.btn,
+                !rewardBalance.canCashOut && cashOutCardStyles.btnDisabled,
+              ]}
+              disabled={!rewardBalance.canCashOut || cashingOut}
+              onPress={handleCashOut}
+            >
+              <Text style={cashOutCardStyles.btnText}>
+                {cashingOut ? "..." : rewardBalance.canCashOut ? "Cash Out 🎁" : "Not yet"}
+              </Text>
+            </Pressable>
+          </View>
+          {rewardBalance.canCashOut && (
+            <Text style={{ color: "#6b7280", fontSize: 11, marginTop: 10 }}>
+              A $1.50 processing fee is deducted from your parent's wallet when the gift card is sent.
+            </Text>
+          )}
+        </View>
+      )}
 
       {/* ── Streak Ladder ── */}
       <View style={styles.card}>
@@ -558,4 +624,10 @@ const styles = StyleSheet.create({
   bountyPlaceholderIcon:{ fontSize: 36, marginBottom: 8 },
   bountyPlaceholderTitle:{ color: "#fff", fontWeight: "700", fontSize: 16, marginBottom: 6 },
   bountyPlaceholderSub: { color: LucidTheme.sub, fontSize: 12, textAlign: "center", lineHeight: 18 },
+});
+
+const cashOutCardStyles = StyleSheet.create({
+  btn:         { backgroundColor: "#ff8a3d", borderRadius: 12, paddingHorizontal: 20, paddingVertical: 12, alignItems: "center" },
+  btnDisabled: { backgroundColor: "#2a3a5c" },
+  btnText:     { color: "#0B0B0F", fontWeight: "800", fontSize: 14 },
 });

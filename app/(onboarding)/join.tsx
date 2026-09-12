@@ -10,6 +10,7 @@ import { router } from "expo-router";
 
 import { joinWithCode } from "../../services/linkService";
 import { setOnboardingComplete } from "../../services/storage";
+import { setAuthToken } from "../../services/api";
 
 export default function JoinScreen() {
   const [code, setCode] = useState("");
@@ -30,6 +31,10 @@ export default function JoinScreen() {
       if (!res.ok) {
         alert(res.error || "Invalid code");
         return;
+      }
+
+      if (res.token) {
+        await setAuthToken(res.token);
       }
 
       await setOnboardingComplete(true);

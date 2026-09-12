@@ -38,15 +38,20 @@ import {
   generateLinkCode,
   updateParentFocusMode,
 } from "../../services/parentService";
+import { useStripe } from "@stripe/stripe-react-native";
 import {
   getParentWallet,
-  topUpWallet,
+  createTopUpIntent,
   approveRewardClaim,
   denyRewardClaim,
   getMilestoneRewardConfigs,
   setMilestoneRewardConfig,
+  getPendingCashOutRequests,
+  approveCashOutRequest,
+  denyCashOutRequest,
   type WalletSummary,
   type MilestoneRewardConfig,
+  type PendingCashOutRequest,
 } from "../../services/walletService";
 
 import { useRefocusStore } from "../../store/useRefocusStore";
@@ -275,8 +280,11 @@ export default function ParentDashboard() {
 
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
   const [walletConfigs, setWalletConfigs] = useState<MilestoneRewardConfig[]>([]);
+  const [cashOutRequests, setCashOutRequests] = useState<PendingCashOutRequest[]>([]);
+  const [tremendousFee, setTremendousFee] = useState(150);
   const [topUpAmount, setTopUpAmount] = useState("");
   const [walletLoading, setWalletLoading] = useState(false);
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
   const children = context?.account?.children || [];
   const maxChildren = limits?.maxChildren ?? 0;
@@ -309,14 +317,19 @@ export default function ParentDashboard() {
 
   async function load() {
     try {
-      const [res, walletRes, configsRes] = await Promise.all([
+      const [res, walletRes, configsRes, cashOutRes] = await Promise.all([
         getParentDashboard(),
         getParentWallet().catch(() => null),
         getMilestoneRewardConfigs().catch(() => []),
+        getPendingCashOutRequests().catch(() => null),
       ]);
       setData(res);
       if (walletRes) setWallet(walletRes);
       setWalletConfigs(configsRes);
+      if (cashOutRes) {
+        setCashOutRequests(cashOutRes.requests ?? []);
+        setTremendousFee(cashOutRes.tremendousFee ?? 150);
+      }
 
       if (!alertedRef.current) {
         const inactive = (res.children || []).filter((c: any) => c.isAppActive === false);
@@ -733,12 +746,28 @@ export default function ParentDashboard() {
                 }
                 setWalletLoading(true);
                 try {
-                  const res = await topUpWallet(cents);
-                  setWallet((w) => w ? { ...w, balanceCents: res.balanceCents } : null);
+                  const { clientSecret } = await createTopUpIntent(cents);
+                  const { error: initError } = await initPaymentSheet({
+                    paymentIntentClientSecret: clientSecret,
+                    merchantDisplayName: "Lucid",
+                    style: "alwaysDark",
+                  });
+                  if (initError) throw new Error(initError.message);
+
+                  const { error: presentError } = await presentPaymentSheet();
+                  if (presentError) {
+                    if (presentError.code !== "Canceled") {
+                      Alert.alert("Payment failed", presentError.message);
+                    }
+                    return;
+                  }
+
                   setTopUpAmount("");
-                  Alert.alert("✅ Wallet Topped Up", `$${(cents / 100).toFixed(2)} added to your reward wallet.`);
+                  Alert.alert("✅ Funds Added", `$${(cents / 100).toFixed(2)} is being added to your wallet and will appear shortly.`);
+                  // Refresh wallet after a short delay to pick up the webhook-credited balance
+                  setTimeout(() => load(), 3000);
                 } catch (err: any) {
-                  Alert.alert("Error", err?.response?.data?.error ?? "Top-up failed");
+                  Alert.alert("Error", err?.response?.data?.error ?? err?.message ?? "Top-up failed");
                 } finally {
                   setWalletLoading(false);
                 }
@@ -751,7 +780,59 @@ export default function ParentDashboard() {
           </View>
         </View>
 
-        {/* Pending claims */}
+        {/* Pending gift card cashout requests */}
+        {cashOutRequests.length > 0 && (
+          <View style={{ marginTop: 16 }}>
+            <Text style={walletStyles.subsectionTitle}>🎁 Gift Card Requests</Text>
+            {cashOutRequests.map((req) => (
+              <View key={req._id} style={walletStyles.claimRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={walletStyles.claimChild}>{req.childName}</Text>
+                  <Text style={walletStyles.claimMilestone}>
+                    ${(req.amountCents / 100).toFixed(2)} gift card · ${(tremendousFee / 100).toFixed(2)} fee
+                  </Text>
+                  <Text style={{ color: "#6b7280", fontSize: 11, marginTop: 2 }}>
+                    Sent to: {req.recipientEmail}
+                  </Text>
+                </View>
+                <Text style={walletStyles.claimAmount}>
+                  ${(req.totalDeductedCents / 100).toFixed(2)}
+                </Text>
+                <View style={{ flexDirection: "row", gap: 8, marginLeft: 8 }}>
+                  <Pressable
+                    style={walletStyles.approveBtn}
+                    onPress={async () => {
+                      try {
+                        await approveCashOutRequest(req._id);
+                        Alert.alert("✅ Gift Card Sent!", `A $${(req.amountCents / 100).toFixed(2)} gift card is on its way to ${req.recipientEmail}.`);
+                        load();
+                      } catch (err: any) {
+                        Alert.alert("Error", err?.response?.data?.error ?? "Could not send gift card");
+                      }
+                    }}
+                  >
+                    <Text style={walletStyles.approveBtnText}>Send</Text>
+                  </Pressable>
+                  <Pressable
+                    style={walletStyles.denyBtn}
+                    onPress={() => {
+                      Alert.alert("Deny Request?", `${req.childName}'s gift card request will be denied.`, [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Deny", style: "destructive", onPress: async () => {
+                          try { await denyCashOutRequest(req._id); load(); } catch {}
+                        }},
+                      ]);
+                    }}
+                  >
+                    <Text style={walletStyles.denyBtnText}>Deny</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Pending milestone claims */}
         {(wallet?.pendingClaims?.length ?? 0) > 0 && (
           <View style={{ marginTop: 16 }}>
             <Text style={walletStyles.subsectionTitle}>Pending Approval</Text>

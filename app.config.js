@@ -42,6 +42,7 @@ export default {
 
     plugins: [
       "expo-dev-client",
+      "@stripe/stripe-react-native",
 
       [
         "expo-notifications",

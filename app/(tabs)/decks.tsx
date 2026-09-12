@@ -14,7 +14,7 @@ import {
 import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
 
-import { generateDeck, importAnkiDeck, previewAnkiDeck, importExcelDeck, previewExcelDeck, remapDeckFields, previewAIDeck, previewAIDeckFromFile, confirmAIDeck, CardType, AnkiPreview, AIPreviewCard } from "../../services/aiDeckService";
+import { generateDeck, importAnkiDeck, previewAnkiDeck, importExcelDeck, previewExcelDeck, remapDeckFields, previewAIDeck, previewAIDeckFromFile, confirmAIDeck, importAnkiDeckForChild, importExcelDeckForChild, CardType, AnkiPreview, AIPreviewCard } from "../../services/aiDeckService";
 import { AnkiFieldModal } from "../../components/AnkiFieldModal";
 import { useRefocusStore } from "../../store/useRefocusStore";
 import {
@@ -96,6 +96,12 @@ export default function DecksScreen() {
     setShuffleDeckIds,
   } = useRefocusStore();
   const { plan, adMode, limits, context } = useRefocusStore();
+  const role = context?.role || "solo";
+
+  const [children, setChildren] = useState<any[]>([]);
+  const [selectedChildIndex, setSelectedChildIndex] = useState(0); // 0 = self, 1+ = children
+
+  const selectedChildId = selectedChildIndex === 0 ? null : children[selectedChildIndex - 1]?.userId;
 
   const usageDecks = context?.settings?.usage?.decksCreated ?? context?.usage?.decksCreated ?? 0;
   const usageCards = context?.settings?.usage?.cardsCreated ?? context?.usage?.cardsCreated ?? 0;
@@ -189,9 +195,17 @@ export default function DecksScreen() {
     displayDeckCount >= Math.max(1, maxDecks - 1);
 
   useEffect(() => {
+    if (role === "parent") {
+      api.get("/parent/dashboard").then((res) => {
+        setChildren(res.data?.children || []);
+      }).catch(() => {});
+    }
+  }, [role]);
+
+  useEffect(() => {
     loadDecks();
     loadPersistedShuffleState();
-  }, []);
+  }, [selectedChildId]);
 
   async function loadPersistedShuffleState() {
     const [mode, ids] = await Promise.all([loadShuffleMode(), loadShuffleDeckIds()]);
@@ -201,7 +215,8 @@ export default function DecksScreen() {
 
   async function loadDecks() {
     try {
-      const res = await api.get("/decks");
+      const params = selectedChildId ? { childId: selectedChildId } : {};
+      const res = await api.get("/decks", { params });
       const loaded = res.data.decks || res.data || [];
       setDecks(loaded);
       loadGoalProgress(loaded);
@@ -215,7 +230,7 @@ export default function DecksScreen() {
     const goalDecks = deckList.filter((d) => d.goalEnabled);
     if (!goalDecks.length) return;
     const results = await Promise.allSettled(
-      goalDecks.map((d) => api.get(`/decks/${d._id}/goal-progress`))
+      goalDecks.map((d) => api.get(`/decks/${d._id}/goal-progress`, { params: selectedChildId ? { targetChildId: selectedChildId } : {} }))
     );
     const map: Record<string, any> = {};
     results.forEach((r, i) => {
@@ -254,13 +269,14 @@ export default function DecksScreen() {
         goalTargetDate = new Date(Date.UTC(y, m - 1, d)).toISOString();
       }
       await api.patch(`/decks/${editingDeck._id}/goal`, {
+        ...(selectedChildId ? { targetChildId: selectedChildId } : {}),
         goalEnabled: editGoalEnabled,
         goalTargetDate,
       });
       // Refresh goal progress for this deck
       if (editGoalEnabled) {
         try {
-          const res = await api.get(`/decks/${editingDeck._id}/goal-progress`);
+          const res = await api.get(`/decks/${editingDeck._id}/goal-progress`, { params: selectedChildId ? { targetChildId: selectedChildId } : {} });
           if (res.data?.ok) {
             setGoalProgressMap((prev) => ({ ...prev, [editingDeck._id]: res.data }));
           }
@@ -298,6 +314,7 @@ export default function DecksScreen() {
         goalTargetDate = new Date(Date.UTC(y, m - 1, d)).toISOString();
       }
       await api.patch(`/decks/${newDeckGoalDeck._id}/goal`, {
+        ...(selectedChildId ? { targetChildId: selectedChildId } : {}),
         goalEnabled: newDeckGoalEnabled,
         goalTargetDate,
       });
@@ -307,7 +324,7 @@ export default function DecksScreen() {
       ));
       if (newDeckGoalEnabled) {
         try {
-          const res = await api.get(`/decks/${newDeckGoalDeck._id}/goal-progress`);
+          const res = await api.get(`/decks/${newDeckGoalDeck._id}/goal-progress`, { params: selectedChildId ? { targetChildId: selectedChildId } : {} });
           if (res.data?.ok) setGoalProgressMap((prev) => ({ ...prev, [newDeckGoalDeck._id]: res.data }));
         } catch {}
       }
@@ -457,7 +474,7 @@ export default function DecksScreen() {
     setStatus("Creating deck...");
 
     try {
-      const result = await confirmAIDeck(processedCards, finalName, finalType);
+      const result = await confirmAIDeck(processedCards, finalName, finalType, selectedChildId ?? undefined);
       await refreshUserContext();
       await loadDecks();
       setStatus("✅ Deck created");
@@ -490,7 +507,7 @@ export default function DecksScreen() {
             try {
               setLoading(true);
               setStatus("Deleting deck...");
-              await api.delete(`/decks/${deckId}`);
+              await api.delete(`/decks/${deckId}`, { data: selectedChildId ? { targetChildId: selectedChildId } : undefined });
               if (selectedDeckId === deckId) {
                 setSelectedDeck(null);
                 await AsyncStorage.removeItem("selectedDeckId");
@@ -562,7 +579,9 @@ export default function DecksScreen() {
     setStatus("Importing...");
 
     try {
-      const result = await importAnkiDeck(pendingFile, frontFieldIndices, backFieldIndices, audioFieldIndex, importDeckName.trim() || undefined);
+      const result = selectedChildId
+        ? await importAnkiDeckForChild(pendingFile, frontFieldIndices, backFieldIndices, audioFieldIndex, importDeckName.trim() || undefined, selectedChildId)
+        : await importAnkiDeck(pendingFile, frontFieldIndices, backFieldIndices, audioFieldIndex, importDeckName.trim() || undefined);
       await refreshUserContext();
       await loadDecks();
       setStatus("✅ Deck imported");
@@ -624,7 +643,9 @@ export default function DecksScreen() {
     setStatus("Importing...");
 
     try {
-      const result = await importExcelDeck(excelPendingFile, excelFrontIndices, excelBackIndices, excelDeckName.trim() || undefined);
+      const result = selectedChildId
+        ? await importExcelDeckForChild(excelPendingFile, excelFrontIndices, excelBackIndices, excelDeckName.trim() || undefined, selectedChildId)
+        : await importExcelDeck(excelPendingFile, excelFrontIndices, excelBackIndices, excelDeckName.trim() || undefined);
       await refreshUserContext();
       await loadDecks();
       setStatus("✅ Deck imported");
@@ -687,7 +708,7 @@ export default function DecksScreen() {
     setEditGoalYear(parts.year);
 
     try {
-      const res = await api.get(`/cards/${deck._id}`);
+      const res = await api.get(`/cards/${deck._id}`, { params: selectedChildId ? { targetChildId: selectedChildId } : {} });
       setDeckCards(res.data.cards || []);
     } catch (err) {
       console.error("Failed to load cards", err);
@@ -712,6 +733,7 @@ export default function DecksScreen() {
     try {
       const res = await api.post("/cards", {
         deckId: editingDeck._id,
+        ...(selectedChildId ? { targetChildId: selectedChildId } : {}),
         front: newCardFront.trim(),
         back: newCardBack.trim(),
       });
@@ -746,6 +768,34 @@ export default function DecksScreen() {
       <Text style={{ color: "white", fontSize: 28, fontWeight: "800" }}>
         Decks
       </Text>
+
+      {role === "parent" && children.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12, marginBottom: 4 }}>
+          <Pressable
+            onPress={() => setSelectedChildIndex(0)}
+            style={{
+              paddingVertical: 10, paddingHorizontal: 16, marginRight: 8,
+              backgroundColor: selectedChildIndex === 0 ? "#D86732" : "#1b2540",
+              borderRadius: 12,
+            }}
+          >
+            <Text style={{ color: "white", fontWeight: "700" }}>My Decks</Text>
+          </Pressable>
+          {children.map((child, i) => (
+            <Pressable
+              key={child.userId}
+              onPress={() => setSelectedChildIndex(i + 1)}
+              style={{
+                paddingVertical: 10, paddingHorizontal: 16, marginRight: 8,
+                backgroundColor: selectedChildIndex === i + 1 ? "#D86732" : "#1b2540",
+                borderRadius: 12,
+              }}
+            >
+              <Text style={{ color: "white", fontWeight: "700" }}>{child.name}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
 
       {/* USAGE SUMMARY */}
       <View

@@ -58,8 +58,9 @@ export async function confirmAIDeck(
   cards: AIPreviewCard[],
   deckName: string,
   cardType: CardType = "basic",
+  targetChildId?: string,
 ) {
-  const res = await api.post("/ai-deck/confirm", { cards, deckName, cardType });
+  const res = await api.post("/ai-deck/confirm", { cards, deckName, cardType, ...(targetChildId ? { targetChildId } : {}) });
   return res.data;
 }
 

@@ -1,3 +1,4 @@
+import { StripeProvider } from "@stripe/stripe-react-native";
 import * as ExpoLinking from "expo-linking";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -388,15 +389,17 @@ async function handleDeepLink(url: string) {
   ========================= */
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <OnboardingProvider>
-          <Stack
-            screenOptions={{ headerShown: false }}
-            initialRouteName="index"
-          />
-        </OnboardingProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <OnboardingProvider>
+            <Stack
+              screenOptions={{ headerShown: false }}
+              initialRouteName="index"
+            />
+          </OnboardingProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </StripeProvider>
   );
 }
