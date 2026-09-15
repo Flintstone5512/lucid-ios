@@ -38,6 +38,10 @@ import {
   generateLinkCode,
   updateParentFocusMode,
 } from "../../services/parentService";
+import {
+  computeSmartBlockingPolicy,
+  SmartBlockingResult,
+} from "../../services/smartBlockingService";
 import { useStripe } from "@stripe/stripe-react-native";
 import {
   getParentWallet,
@@ -1054,6 +1058,73 @@ function ChildCard({ child, reload, onImportAnki, onImportExcel }: any) {
   const [afterSchoolHour, setAfterSchoolHour] = useState(
     child.afterSchoolMode?.startHour ?? 14
   );
+  const [smartBlocking, setSmartBlocking] = useState(false);
+  const [smartPolicy, setSmartPolicy] = useState<SmartBlockingResult | null>(null);
+  const [smartLoading, setSmartLoading] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(`smart_blocking_child_${child.userId}`)
+      .then((val) => { if (val === "true") setSmartBlocking(true); })
+      .catch(() => {});
+  }, [child.userId]);
+
+  async function toggleSmartBlocking() {
+    const next = !smartBlocking;
+    setSmartBlocking(next);
+    await AsyncStorage.setItem(`smart_blocking_child_${child.userId}`, String(next)).catch(() => {});
+
+    if (next) {
+      setSmartLoading(true);
+      try {
+        const policy = await computeSmartBlockingPolicy(
+          { timerPolicy: { cardsRequired: Number(cardsRequired), unlockMinutes: Number(unlockMinutes) } }
+        );
+        setSmartPolicy(policy);
+        setCardsRequired(String(policy.cardsRequired));
+        setUnlockMinutes(String(policy.unlockMinutes));
+        await updateChildRestrictions({
+          childId: child.userId,
+          restrictions: {
+            maxDailyMinutes: Number(limit),
+            unlockMinutes: policy.unlockMinutes,
+            cardsRequired: policy.cardsRequired,
+          },
+          focusMode: mode,
+          afterSchoolMode: { enabled: afterSchoolEnabled, startHour: afterSchoolHour },
+          cardPolicy: { dailyNewCards: Number(dailyNewCards), maxReviewsPerDay: Number(maxReviewsPerDay) },
+        }).catch(() => {});
+      } finally {
+        setSmartLoading(false);
+      }
+    } else {
+      setSmartPolicy(null);
+    }
+  }
+
+  async function recalculateSmartBlocking() {
+    setSmartLoading(true);
+    try {
+      const policy = await computeSmartBlockingPolicy(
+        { timerPolicy: { cardsRequired: Number(cardsRequired), unlockMinutes: Number(unlockMinutes) } }
+      );
+      setSmartPolicy(policy);
+      setCardsRequired(String(policy.cardsRequired));
+      setUnlockMinutes(String(policy.unlockMinutes));
+      await updateChildRestrictions({
+        childId: child.userId,
+        restrictions: {
+          maxDailyMinutes: Number(limit),
+          unlockMinutes: policy.unlockMinutes,
+          cardsRequired: policy.cardsRequired,
+        },
+        focusMode: mode,
+        afterSchoolMode: { enabled: afterSchoolEnabled, startHour: afterSchoolHour },
+        cardPolicy: { dailyNewCards: Number(dailyNewCards), maxReviewsPerDay: Number(maxReviewsPerDay) },
+      }).catch(() => {});
+    } finally {
+      setSmartLoading(false);
+    }
+  }
 
   // AI deck generation
   const [aiPrompt, setAiPrompt] = useState("");
@@ -1241,6 +1312,61 @@ function ChildCard({ child, reload, onImportAnki, onImportExcel }: any) {
                 </Pressable>
               ))}
             </View>
+          </>
+        )}
+      </View>
+
+      {/* ── SMART BLOCKING ── */}
+      <View style={styles.smartBlockingSection}>
+        <View style={styles.smartBlockingHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.smartBlockingTitle}>Smart Blocking</Text>
+            <Text style={styles.smartBlockingDesc}>
+              Auto-adjusts cards required and unlock duration based on {child.name || "child"}'s study habits and social media usage.
+            </Text>
+          </View>
+          <Pressable
+            onPress={toggleSmartBlocking}
+            style={[styles.smartBlockingToggle, smartBlocking ? styles.toggleOn : styles.toggleOff]}
+          >
+            <Text style={styles.toggleText}>{smartBlocking ? "ON" : "OFF"}</Text>
+          </Pressable>
+        </View>
+
+        {smartBlocking && (
+          <>
+            {smartLoading ? (
+              <View style={styles.smartBlockingLoading}>
+                <ActivityIndicator color="#D86732" />
+                <Text style={styles.smartBlockingLoadingText}>Calculating policy...</Text>
+              </View>
+            ) : smartPolicy ? (
+              <>
+                <View style={styles.smartBlockingValues}>
+                  <View style={styles.smartBlockingMetric}>
+                    <Text style={styles.smartBlockingMetricValue}>{smartPolicy.cardsRequired}</Text>
+                    <Text style={styles.smartBlockingMetricLabel}>Cards Required</Text>
+                  </View>
+                  <View style={styles.smartBlockingDivider} />
+                  <View style={styles.smartBlockingMetric}>
+                    <Text style={styles.smartBlockingMetricValue}>{smartPolicy.unlockMinutes}m</Text>
+                    <Text style={styles.smartBlockingMetricLabel}>Unlock Duration</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.smartBlockingReasonTitle}>Why these values?</Text>
+                {smartPolicy.reasoning.map((reason: string, i: number) => (
+                  <View key={i} style={styles.smartBlockingReasonRow}>
+                    <Text style={styles.smartBlockingReasonBullet}>•</Text>
+                    <Text style={styles.smartBlockingReasonText}>{reason}</Text>
+                  </View>
+                ))}
+
+                <Pressable onPress={recalculateSmartBlocking} style={styles.recalcBtn}>
+                  <Text style={styles.recalcBtnText}>Recalculate Now</Text>
+                </Pressable>
+              </>
+            ) : null}
           </>
         )}
       </View>
@@ -1606,6 +1732,131 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     zIndex: 999,
+  },
+
+  smartBlockingSection: {
+    backgroundColor: "#151820",
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 14,
+  },
+
+  smartBlockingHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+
+  smartBlockingTitle: {
+    color: "#D86732",
+    fontWeight: "800",
+    fontSize: 13,
+    marginBottom: 4,
+  },
+
+  smartBlockingDesc: {
+    color: "#A9BDDB",
+    fontSize: 12,
+    lineHeight: 17,
+  },
+
+  smartBlockingToggle: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    minWidth: 52,
+    alignItems: "center",
+  },
+
+  smartBlockingLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 14,
+  },
+
+  smartBlockingLoadingText: {
+    color: "#A9BDDB",
+    fontSize: 12,
+  },
+
+  smartBlockingValues: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 14,
+    marginBottom: 14,
+    backgroundColor: "rgba(216,103,50,0.08)",
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "rgba(216,103,50,0.2)",
+  },
+
+  smartBlockingMetric: {
+    flex: 1,
+    alignItems: "center",
+  },
+
+  smartBlockingMetricValue: {
+    color: "#D86732",
+    fontWeight: "900",
+    fontSize: 22,
+  },
+
+  smartBlockingMetricLabel: {
+    color: "#A9BDDB",
+    fontSize: 11,
+    marginTop: 2,
+  },
+
+  smartBlockingDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: "rgba(216,103,50,0.3)",
+    marginHorizontal: 10,
+  },
+
+  smartBlockingReasonTitle: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 12,
+    marginBottom: 8,
+  },
+
+  smartBlockingReasonRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: 5,
+  },
+
+  smartBlockingReasonBullet: {
+    color: "#D86732",
+    fontSize: 12,
+    lineHeight: 17,
+  },
+
+  smartBlockingReasonText: {
+    color: "#A9BDDB",
+    fontSize: 12,
+    lineHeight: 17,
+    flex: 1,
+  },
+
+  recalcBtn: {
+    marginTop: 12,
+    backgroundColor: "rgba(216,103,50,0.15)",
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(216,103,50,0.3)",
+  },
+
+  recalcBtnText: {
+    color: "#D86732",
+    fontWeight: "700",
+    fontSize: 12,
   },
 });
 
