@@ -29,7 +29,14 @@
           "iosAppId": "ca-app-pub-4629047096490080~9722701138"
         }
       ],
-      "./plugins/withShieldExtensions"
+      "./plugins/withShieldExtensions",
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.yourapp.scrolltax",
+          "enableGooglePay": false
+        }
+      ]
     ],
 
     "ios": {
