@@ -161,9 +161,9 @@ export default function HomeworkHubScreen() {
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("");
 
-  const [selectedFile, setSelectedFile] = useState<{
+  const [selectedFiles, setSelectedFiles] = useState<{
     uri: string; name: string; mimeType?: string;
-  } | null>(null);
+  }[]>([]);
 
   const [questions, setQuestions] = useState<HomeworkQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -191,26 +191,35 @@ export default function HomeworkHubScreen() {
       const result = await DocumentPicker.getDocumentAsync({
         type: ["application/pdf", "image/jpeg", "image/jpg", "image/png", "image/*"],
         copyToCacheDirectory: true,
+        multiple: true,
       });
       if (result.canceled) return;
-      const asset = result.assets[0];
-      setSelectedFile({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType });
+      const incoming = result.assets.map((a) => ({ uri: a.uri, name: a.name, mimeType: a.mimeType }));
+      setSelectedFiles((prev) => {
+        const existingNames = new Set(prev.map((f) => f.name));
+        const deduped = incoming.filter((f) => !existingNames.has(f.name));
+        return [...prev, ...deduped];
+      });
     } catch {
       Alert.alert("Error", "Could not open file picker. Please try again.");
     }
   }
 
+  function handleRemoveFile(name: string) {
+    setSelectedFiles((prev) => prev.filter((f) => f.name !== name));
+  }
+
   // ── Upload & extract ────────────────────────────────────────────────────────
 
   async function handleAnalyze() {
-    if (!selectedFile) {
-      Alert.alert("No file", "Please pick a PDF or photo of your homework first.");
+    if (selectedFiles.length === 0) {
+      Alert.alert("No files", "Please add at least one PDF or photo of your homework first.");
       return;
     }
     setLoading(true);
-    setLoadingMsg("Reading your homework...");
+    setLoadingMsg(selectedFiles.length > 1 ? `Reading ${selectedFiles.length} files...` : "Reading your homework...");
     try {
-      const { questions: qs } = await extractHomework(selectedFile);
+      const { questions: qs } = await extractHomework(selectedFiles);
       if (!qs || qs.length === 0) {
         Alert.alert(
           "No questions found",
@@ -364,35 +373,79 @@ export default function HomeworkHubScreen() {
       <>
         {renderHeader(
           "Upload Homework",
-          "Take a clear photo or pick a PDF of the homework assignment. The AI will find all the questions — no answers involved."
+          "Add one or more PDFs or photos — the AI reads everything together as a single assignment and finds all the questions."
         )}
 
+        {/* File list */}
+        {selectedFiles.length > 0 && (
+          <View style={{ marginBottom: 12 }}>
+            {selectedFiles.map((f) => (
+              <View
+                key={f.name}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: CARD_BG,
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 8,
+                  borderWidth: 1,
+                  borderColor: ACCENT + "55",
+                }}
+              >
+                <Text style={{ fontSize: 20, marginRight: 10 }}>
+                  {f.mimeType?.startsWith("image") ? "🖼️" : "📄"}
+                </Text>
+                <Text
+                  style={{ color: "#22c55e", fontWeight: "700", fontSize: 13, flex: 1 }}
+                  numberOfLines={1}
+                >
+                  {f.name}
+                </Text>
+                <Pressable
+                  onPress={() => handleRemoveFile(f.name)}
+                  hitSlop={10}
+                  style={{
+                    marginLeft: 10,
+                    backgroundColor: "rgba(239,68,68,0.15)",
+                    borderRadius: 8,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                  }}
+                >
+                  <Text style={{ color: "#ef4444", fontWeight: "700", fontSize: 13 }}>✕</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Add files button */}
         <Pressable
           onPress={handlePickFile}
           style={{
             borderWidth: 2,
-            borderColor: selectedFile ? ACCENT : BORDER,
+            borderColor: selectedFiles.length > 0 ? ACCENT : BORDER,
             borderStyle: "dashed",
             borderRadius: 18,
-            padding: 32,
+            padding: selectedFiles.length > 0 ? 18 : 32,
             alignItems: "center",
             backgroundColor: CARD_BG,
             marginBottom: 16,
           }}
         >
-          <Text style={{ fontSize: 36, marginBottom: 12 }}>📄</Text>
-          {selectedFile ? (
-            <>
-              <Text style={{ color: "#22c55e", fontWeight: "700", fontSize: 15, textAlign: "center" }}>
-                {selectedFile.name}
-              </Text>
-              <Text style={{ color: SUBTEXT, fontSize: 12, marginTop: 4 }}>Tap to change file</Text>
-            </>
+          <Text style={{ fontSize: selectedFiles.length > 0 ? 24 : 36, marginBottom: 8 }}>
+            {selectedFiles.length > 0 ? "➕" : "📄"}
+          </Text>
+          {selectedFiles.length > 0 ? (
+            <Text style={{ color: SUBTEXT, fontWeight: "700", fontSize: 14 }}>
+              Add More Files
+            </Text>
           ) : (
             <>
-              <Text style={{ color: TEXT, fontWeight: "700", fontSize: 16 }}>Pick PDF or Photo</Text>
+              <Text style={{ color: TEXT, fontWeight: "700", fontSize: 16 }}>Pick PDFs or Photos</Text>
               <Text style={{ color: SUBTEXT, fontSize: 13, marginTop: 6, textAlign: "center" }}>
-                Supports PDF, JPG, and PNG
+                Supports PDF, JPG, and PNG — select multiple at once
               </Text>
             </>
           )}
@@ -418,9 +471,9 @@ export default function HomeworkHubScreen() {
 
         <Pressable
           onPress={handleAnalyze}
-          disabled={!selectedFile || loading}
+          disabled={selectedFiles.length === 0 || loading}
           style={{
-            backgroundColor: selectedFile ? ACCENT : "#2a2e36",
+            backgroundColor: selectedFiles.length > 0 ? ACCENT : "#2a2e36",
             borderRadius: 14,
             padding: 16,
             alignItems: "center",
@@ -430,7 +483,9 @@ export default function HomeworkHubScreen() {
             <ActivityIndicator color="white" />
           ) : (
             <Text style={{ color: TEXT, fontWeight: "700", fontSize: 16 }}>
-              Analyze Homework
+              {selectedFiles.length > 1
+                ? `Analyze ${selectedFiles.length} Files`
+                : "Analyze Homework"}
             </Text>
           )}
         </Pressable>

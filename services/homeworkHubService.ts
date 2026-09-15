@@ -29,17 +29,19 @@ export interface EvaluationItem {
   hint: string;
 }
 
-export async function extractHomework(file: {
+export async function extractHomework(files: {
   uri: string;
   name: string;
   mimeType?: string;
-}): Promise<{ questions: HomeworkQuestion[] }> {
+}[]): Promise<{ questions: HomeworkQuestion[] }> {
   const form = new FormData();
-  form.append("file", {
-    uri: file.uri,
-    name: file.name,
-    type: file.mimeType || "application/octet-stream",
-  } as any);
+  for (const file of files) {
+    form.append("files", {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType || "application/octet-stream",
+    } as any);
+  }
   const res = await api.post("/homework/extract", form, {
     headers: { "Content-Type": "multipart/form-data" },
   });
