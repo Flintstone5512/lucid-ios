@@ -10,6 +10,7 @@ import {
   Modal,
   Switch,
   Platform,
+  Image,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
@@ -1692,12 +1693,22 @@ Examples:
                     borderColor: "#2a2e36",
                   }}
                 >
-                  <Text style={{ color: "white", fontWeight: "700" }}>
-                    {card.front}
-                  </Text>
-                  <Text style={{ color: "#A9BDDB", marginTop: 4, fontSize: 13 }}>
-                    {card.back}
-                  </Text>
+                  {(card.frontMedia ?? []).filter((m: any) => m.type === "image").map((m: any, mi: number) => (
+                    <Image key={mi} source={{ uri: m.url }} style={{ width: "100%", height: 140, borderRadius: 8, marginBottom: 8 }} resizeMode="contain" />
+                  ))}
+                  {!!card.front && (
+                    <Text style={{ color: "white", fontWeight: "700" }}>
+                      {card.front}
+                    </Text>
+                  )}
+                  {(card.backMedia ?? []).filter((m: any) => m.type === "image").map((m: any, mi: number) => (
+                    <Image key={mi} source={{ uri: m.url }} style={{ width: "100%", height: 140, borderRadius: 8, marginTop: 8 }} resizeMode="contain" />
+                  ))}
+                  {!!card.back && (
+                    <Text style={{ color: "#A9BDDB", marginTop: 4, fontSize: 13 }}>
+                      {card.back}
+                    </Text>
+                  )}
                 </View>
               ))
             )}
