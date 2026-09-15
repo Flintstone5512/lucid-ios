@@ -85,7 +85,7 @@ export default function AnalyticsScreen() {
 
   const selectedTab = role === "parent" ? tabs[selectedTabIndex] : null;
 
-  const data = role === "parent" ? selectedTab?.dashboard : dashboard;
+  const data = role === "parent" ? (selectedTab?.dashboard ?? null) : dashboard;
 // 🔥 EMPTY STATE (PARENT — NO CHILDREN, NO SELF DATA)
 if (role === "parent" && tabs.length === 0) {
   return (
@@ -201,9 +201,36 @@ if (role === "parent" && tabs.length === 0) {
 
   if (!data) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.loading}>Loading analytics...</Text>
-      </View>
+      <ScrollView
+        style={styles.container}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#D86732" />}
+      >
+        {role === "parent" && tabs.length > 1 && (
+          <ScrollView horizontal style={styles.childSelector}>
+            {tabs.map((tab, i) => (
+              <Pressable
+                key={tab.isSelf ? "__self__" : tab.childId}
+                onPress={() => setSelectedTabIndex(i)}
+                style={[styles.childTab, i === selectedTabIndex && styles.childTabActive]}
+              >
+                <Text style={styles.childText}>{tab.name}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
+        <View style={[styles.center, { flex: 0, paddingVertical: 60 }]}>
+          <Text style={styles.loading}>
+            {role === "parent" && selectedTab
+              ? `No data yet for ${selectedTab.name}`
+              : "Loading analytics..."}
+          </Text>
+          {role === "parent" && selectedTab && (
+            <Text style={[styles.helper, { textAlign: "center", marginTop: 8 }]}>
+              {selectedTab.name} hasn't completed a study session yet
+            </Text>
+          )}
+        </View>
+      </ScrollView>
     );
   }
 
@@ -285,23 +312,27 @@ if (role === "parent" && tabs.length === 0) {
 
         <View style={styles.row}>
           <MetricCard
-            label="Cards"
-            value={data.today?.cardsReviewed || 0}
+            label="📚 Cards"
+            value={data.today?.cardsReviewed ?? 0}
           />
           <MetricCard
-            label="Study"
-            value={`${data.today?.studyMinutes || 0}m`}
+            label="🎯 Study"
+            value={
+              (data.today?.studyMinutes ?? 0) < 1
+                ? `${Math.round((data.today?.studyMinutes ?? 0) * 60)}s`
+                : `${Math.round(data.today?.studyMinutes ?? 0)}m`
+            }
           />
         </View>
 
         <View style={styles.row}>
           <MetricCard
-            label="Wasted"
-            value={`${data.today?.wastedMinutes || 0}m`}
+            label="📱 Wasted"
+            value={`${Math.round(data.today?.wastedMinutes ?? 0)}m`}
           />
           <MetricCard
-            label="Earned"
-            value={`${data.today?.unlockMinutesEarned || 0}m`}
+            label="⚡ Earned"
+            value={`${Math.round(data.today?.unlockMinutesEarned ?? 0)}m`}
           />
         </View>
       </View>
@@ -314,18 +345,33 @@ if (role === "parent" && tabs.length === 0) {
           {role === "parent" && !selectedTab?.isSelf ? "Child Behavior" : "Behavior"}
         </Text>
 
-        <MetricCard
-          label="Focus Efficiency"
-          value={`${Math.round(
-            (data.behavior?.conversionRate || 0) * 100
-          )}%`}
-        />
-
-        <Text style={styles.helper}>
-          {role === "parent" && !selectedTab?.isSelf
-            ? "How effectively your child converts screen time into learning"
-            : "How often you turn scrolling into learning"}
-        </Text>
+        {(() => {
+          const rate = Math.min(data.behavior?.conversionRate ?? 0, 1);
+          const pct = Math.round(rate * 100);
+          const color = pct >= 70 ? "#4CAF50" : pct >= 40 ? "#D86732" : "#F44336";
+          return (
+            <>
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+                <Text style={{ color: "white", fontSize: 36, fontWeight: "900", marginRight: 10 }}>
+                  {pct}%
+                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: "#A9BDDB", fontSize: 11, marginBottom: 6 }}>Focus Efficiency</Text>
+                  <View style={{ height: 8, backgroundColor: "#111d36", borderRadius: 99 }}>
+                    <View style={{ height: 8, width: `${pct}%`, backgroundColor: color, borderRadius: 99, minWidth: pct > 0 ? 4 : 0 }} />
+                  </View>
+                </View>
+              </View>
+              <Text style={styles.helper}>
+                {pct === 0
+                  ? "Complete study sessions to build your efficiency score"
+                  : role === "parent" && !selectedTab?.isSelf
+                  ? "How effectively your child converts screen time into learning"
+                  : "How often you turn scrolling into learning"}
+              </Text>
+            </>
+          );
+        })()}
       </View>
 
       {/* =========================
@@ -334,24 +380,43 @@ if (role === "parent" && tabs.length === 0) {
       {data.trends && <TrendsCard trends={data.trends} />}
 
       {/* =========================
-         🔥 TREND
+         🔥 7-DAY ACTIVITY
       ========================= */}
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>7-Day Activity</Text>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <Text style={styles.sectionTitle}>7-Day Activity</Text>
+          <Text style={{ color: "#A9BDDB", fontSize: 11 }}>cards reviewed</Text>
+        </View>
 
         {(data.dailySeries || []).length === 0 ? (
           <Text style={styles.empty}>
             No data yet. Start a session to track progress.
           </Text>
         ) : (
-          data.dailySeries.map((day: any) => (
-            <SimpleBar
-              key={day.dateKey}
-              label={day.dateKey}
-              value={day.cardsReviewed}
-              max={maxCards}
-            />
-          ))
+          <View style={{ flexDirection: "row", gap: 6, alignItems: "flex-end", marginTop: 8 }}>
+            {data.dailySeries.map((day: any) => (
+              <SimpleBar
+                key={day.dateKey}
+                label={day.dateKey}
+                value={day.cardsReviewed}
+                max={maxCards}
+              />
+            ))}
+          </View>
+        )}
+
+        {(data.dailySeries || []).length > 0 && (
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 12 }}>
+            <Text style={{ color: "#A9BDDB", fontSize: 11 }}>
+              Peak: <Text style={{ color: "white", fontWeight: "700" }}>{maxCards} cards</Text>
+            </Text>
+            <Text style={{ color: "#A9BDDB", fontSize: 11 }}>
+              Total:{" "}
+              <Text style={{ color: "white", fontWeight: "700" }}>
+                {(data.dailySeries || []).reduce((s: number, d: any) => s + (d.cardsReviewed || 0), 0)} cards
+              </Text>
+            </Text>
+          </View>
         )}
       </View>
     </ScrollView>
@@ -392,6 +457,8 @@ function TrendRow({
   const dayChange = Math.abs(dayDelta?.change || 0);
   const weekChange = Math.abs(weekDelta?.change || 0);
 
+  const fmt = (v: number) => unit === "m" ? fmtMin(v) : `${Math.round(v)}`;
+
   return (
     <View style={trendStyles.row}>
       <Text style={trendStyles.label}>{label}</Text>
@@ -401,7 +468,7 @@ function TrendRow({
             {day.icon}
           </Text>
           <Text style={trendStyles.change}>
-            {dayChange}{unit} vs yesterday
+            {fmt(dayChange)} vs yesterday
           </Text>
         </View>
         <View style={trendStyles.col}>
@@ -409,12 +476,17 @@ function TrendRow({
             {week.icon}
           </Text>
           <Text style={trendStyles.change}>
-            {weekChange}{unit} vs last week
+            {fmt(weekChange)} vs last week
           </Text>
         </View>
       </View>
     </View>
   );
+}
+
+function fmtMin(m: number): string {
+  const rounded = Math.round(m * 10) / 10;
+  return rounded < 1 ? `${Math.round(m * 60)}s` : `${rounded}m`;
 }
 
 function TrendsCard({ trends }: { trends: any }) {
@@ -425,15 +497,15 @@ function TrendsCard({ trends }: { trends: any }) {
       <View style={trendStyles.avgRow}>
         <Text style={trendStyles.avgLabel}>7-day avg:</Text>
         <Text style={trendStyles.avgValue}>
-          {trends.weeklyAvg?.cardsReviewed ?? 0} cards
+          {Math.round(trends.weeklyAvg?.cardsReviewed ?? 0)} cards
         </Text>
         <Text style={trendStyles.avgDivider}>·</Text>
         <Text style={trendStyles.avgValue}>
-          {trends.weeklyAvg?.studyMinutes ?? 0}m study
+          {fmtMin(trends.weeklyAvg?.studyMinutes ?? 0)} study
         </Text>
         <Text style={trendStyles.avgDivider}>·</Text>
         <Text style={trendStyles.avgValue}>
-          {trends.weeklyAvg?.wastedMinutes ?? 0}m wasted
+          {fmtMin(trends.weeklyAvg?.wastedMinutes ?? 0)} wasted
         </Text>
       </View>
 
