@@ -72,7 +72,6 @@ export default {
         }
       ],
 
-      "expo-tracking-transparency",
       "./plugins/withScrollTax",
       "./plugins/withShieldExtensions"
     ]

@@ -22,7 +22,6 @@ import { useRefocusStore } from "../store/useRefocusStore";
 import { ensurePermissions } from "../utils/ensurePermissions";
 
 import * as Notifications from "expo-notifications";
-import { requestTrackingPermissionsAsync } from "expo-tracking-transparency";
 
 // Required by expo-notifications — without this, scheduled notifications
 // are silently suppressed even when permissions are granted.
@@ -128,11 +127,6 @@ async function handleDeepLink(url: string) {
 
     async function init() {
       try {
-        // ATT must be requested before Google Ads initializes on iOS 14+
-        if (Platform.OS === "ios") {
-          await requestTrackingPermissionsAsync().catch(() => {});
-        }
-
         const mobileAds = require("react-native-google-mobile-ads").default;
         await mobileAds().initialize();
 
