@@ -615,6 +615,23 @@ export default function SettingsScreen() {
         </Text>
       </Pressable>
 
+      {/* IMMERSIVE NOTIFICATIONS — admin only */}
+      {context?.email === "getsolomoney@gmail.com" && (
+        <Pressable
+          style={styles.referralCard}
+          onPress={() => router.push("/main/immersiveNotifications")}
+        >
+          <View style={styles.referralLeft}>
+            <Text style={styles.referralIcon}>🔔</Text>
+            <View>
+              <Text style={styles.referralTitle}>Immersive Notifications</Text>
+              <Text style={styles.referralSub}>Study cards delivered to your lock screen</Text>
+            </View>
+          </View>
+          <Text style={styles.referralArrow}>→</Text>
+        </Pressable>
+      )}
+
       {/* ACCOUNT */}
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Account</Text>

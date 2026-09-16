@@ -153,7 +153,7 @@ export default function IOSScreenTimeSetupScreen() {
               disabled={loading || authorized}
             >
               <Text style={[styles.btnText, authorized && styles.btnTextDone]}>
-                {authorized ? "Access Granted" : "Grant Access"}
+                {authorized ? "Access Granted" : "Continue"}
               </Text>
             </Pressable>
           </View>

@@ -309,6 +309,7 @@ import {
 } from "../services/nativeBridge";
 import { getSession, submitReview } from "../services/reviewService";
 import { getSettings } from "../services/settingsService";
+import { saveRotationIndex } from "../services/deckStorage";
 import { useRefocusStore } from "../store/useRefocusStore";
 
 const NO_CARDS_GRACE_MINUTES = 20;
@@ -372,6 +373,9 @@ export default function SessionScreen() {
     unlockedUntil,
     shuffleMode,
     shuffleDeckIds,
+    rotationMode,
+    rotationIndex,
+    setRotationIndex,
     plan,
   } = useRefocusStore();
 
@@ -550,7 +554,8 @@ export default function SessionScreen() {
 
   async function load() {
     const isShuffling = shuffleMode && shuffleDeckIds.length > 0;
-    console.log("[SESSION] load() called — shuffleMode:", shuffleMode, "shuffleDeckIds:", shuffleDeckIds, "selectedDeckId:", selectedDeckId);
+    const isRotating = rotationMode && shuffleDeckIds.length > 0;
+    console.log("[SESSION] load() called — shuffleMode:", shuffleMode, "rotationMode:", rotationMode, "shuffleDeckIds:", shuffleDeckIds, "selectedDeckId:", selectedDeckId);
 
     if (unlockedUntil > Date.now()) {
       console.log("[SESSION] Active unlock — returning to tabs");
@@ -558,14 +563,22 @@ export default function SessionScreen() {
       return;
     }
 
-    if (!isShuffling && !selectedDeckId) {
+    // If a session is already in progress (cards loaded, not completed, not on last card),
+    // don't re-fetch — the AppState listener can re-navigate here mid-session and
+    // resetting cards would freeze the UI with an inconsistent state.
+    if (cards.length > 0 && !completed && index < cards.length) {
+      console.log("[SESSION] Session already in progress — skipping reload");
+      return;
+    }
+
+    if (!isShuffling && !isRotating && !selectedDeckId) {
       console.log("[SESSION] No deck selected — showing 'Select a deck first'");
       setLoading(false);
       return;
     }
 
-    if (shuffleMode && shuffleDeckIds.length === 0) {
-      console.log("[SESSION] Shuffle mode on but no decks selected");
+    if ((shuffleMode || rotationMode) && shuffleDeckIds.length === 0) {
+      console.log("[SESSION] Multi-deck mode on but no decks selected");
       setLoading(false);
       return;
     }
@@ -598,6 +611,15 @@ export default function SessionScreen() {
         );
         safeCards = fisherYatesShuffle(merged).slice(0, cardsRequired);
         console.log("[SESSION] Shuffle merged card count:", merged.length, "→ capped to", safeCards.length);
+      } else if (isRotating) {
+        const deckId = shuffleDeckIds[rotationIndex % shuffleDeckIds.length];
+        console.log("[SESSION] Rotation mode — deck", (rotationIndex % shuffleDeckIds.length) + 1, "of", shuffleDeckIds.length, ":", deckId);
+        const res = await getSession(deckId);
+        safeCards = (res.cards || []).filter(Boolean).map((card: any) => ({
+          ...card,
+          deckId: card.deckId || deckId,
+        }));
+        console.log("[SESSION] Rotation safeCards count:", safeCards.length);
       } else {
         console.log("[SESSION] Calling getSession for deck:", selectedDeckId);
         const res = await getSession(selectedDeckId!);
@@ -800,6 +822,14 @@ export default function SessionScreen() {
   async function handleSessionEnd() {
     console.log("[SESSION] handleSessionEnd called");
     AsyncStorage.removeItem("lucid_session_progress").catch(() => {});
+
+    // Advance rotation index so the next session uses the next deck
+    if (rotationMode && shuffleDeckIds.length > 0) {
+      const nextIndex = (rotationIndex + 1) % shuffleDeckIds.length;
+      setRotationIndex(nextIndex);
+      saveRotationIndex(nextIndex).catch(() => {});
+      console.log("[SESSION] Rotation advanced to deck index", nextIndex);
+    }
     try {
       const completionRes = await api.post("/reviews/session/complete");
       const { showAd, expiresAt } = completionRes?.data || {};
@@ -1085,15 +1115,17 @@ export default function SessionScreen() {
     );
   }
 
-  if (shuffleMode && shuffleDeckIds.length === 0) {
+  if ((shuffleMode || rotationMode) && shuffleDeckIds.length === 0) {
     return (
       <View style={styles.center}>
-        <Text style={{ color: "white" }}>Select at least one deck in Shuffle Mode.</Text>
+        <Text style={{ color: "white" }}>
+          Select at least one deck in {rotationMode ? "Deck Rotation" : "Shuffle"} Mode.
+        </Text>
       </View>
     );
   }
 
-  if (!shuffleMode && !selectedDeckId) {
+  if (!shuffleMode && !rotationMode && !selectedDeckId) {
     return (
       <View style={styles.center}>
         <Text style={{ color: "white", marginBottom: 20, fontSize: 16 }}>Select a deck first.</Text>

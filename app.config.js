@@ -22,6 +22,10 @@ export default {
       deploymentTarget: "16.4",
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
+        NSUserTrackingUsageDescription:
+          "Lucid uses this to deliver relevant ads. No browsing activity is collected or sold.",
+        NSCameraUsageDescription:
+          "Lucid uses the camera to let you scan a payment card when subscribing.",
       },
       entitlements: {
         "com.apple.developer.family-controls": true,
@@ -68,6 +72,7 @@ export default {
         }
       ],
 
+      "expo-tracking-transparency",
       "./plugins/withScrollTax",
       "./plugins/withShieldExtensions"
     ]

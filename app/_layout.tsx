@@ -22,6 +22,7 @@ import { useRefocusStore } from "../store/useRefocusStore";
 import { ensurePermissions } from "../utils/ensurePermissions";
 
 import * as Notifications from "expo-notifications";
+import { requestTrackingPermissionsAsync } from "expo-tracking-transparency";
 
 // Required by expo-notifications — without this, scheduled notifications
 // are silently suppressed even when permissions are granted.
@@ -52,6 +53,7 @@ export default function RootLayout() {
   const [androidPermChecked, setAndroidPermChecked] = useState(false);
 
   const lastDeepLinkAt = useRef(0); // 🔥 debounce — prevents double firing within 1s
+  const lastSessionNavAt = useRef(0); // debounce — prevents AppState/notification loop re-navigating to /session
 
   const setEnforcementMode = useRefocusStore(
     (s) => s.setEnforcementMode
@@ -126,6 +128,11 @@ async function handleDeepLink(url: string) {
 
     async function init() {
       try {
+        // ATT must be requested before Google Ads initializes on iOS 14+
+        if (Platform.OS === "ios") {
+          await requestTrackingPermissionsAsync().catch(() => {});
+        }
+
         const mobileAds = require("react-native-google-mobile-ads").default;
         await mobileAds().initialize();
 
@@ -302,17 +309,26 @@ async function handleDeepLink(url: string) {
             // Primary: check flag set by DeviceActivityMonitor extension
             const sessionResult = await checkAndClearPendingSession();
             if (sessionResult?.pending) {
+              const now = Date.now();
+              if (now - lastSessionNavAt.current < 5000) return;
+              lastSessionNavAt.current = now;
               setTimeout(() => router.replace("/session"), 120);
               return;
             }
 
             // Fallback: if apps are shielded and we have no active unlock window,
             // the user needs a session regardless of whether the extension fired.
+            // Guard: skip if we already navigated to /session in the last 5 seconds
+            // to prevent repeated AppState firings (e.g. screen lock/unlock) from
+            // re-replacing the session screen mid-flashcard, which freezes the UI.
+            const now = Date.now();
+            if (now - lastSessionNavAt.current < 5000) return;
             const { unlockedUntil } = useRefocusStore.getState();
             const isUnlocked = unlockedUntil > Date.now();
             if (!isUnlocked) {
               const shieldResult = await getIOSShieldStatus();
               if (shieldResult?.isShielded) {
+                lastSessionNavAt.current = now;
                 setTimeout(() => router.replace("/session"), 120);
               }
             }
@@ -341,6 +357,9 @@ async function handleDeepLink(url: string) {
         checkAndClearPendingSession()
           .then((result) => {
             if (result?.pending) {
+              const now = Date.now();
+              if (now - lastSessionNavAt.current < 5000) return;
+              lastSessionNavAt.current = now;
               setTimeout(() => router.replace("/session"), 120);
             }
           })
@@ -365,10 +384,30 @@ async function handleDeepLink(url: string) {
       checkAndClearPendingSession()
         .then((result) => {
           if (result?.pending) {
+            const now = Date.now();
+            if (now - lastSessionNavAt.current < 5000) return;
+            lastSessionNavAt.current = now;
             setTimeout(() => router.replace("/session"), 120);
           }
         })
         .catch(() => {});
+    });
+
+    return () => sub.remove();
+  }, []);
+
+  /* =========================
+     🔔 IMMERSIVE CARD TAP
+     Works on both iOS + Android
+  ========================= */
+
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as any;
+      if (data?.type === "immersive_card") {
+        // Navigate to the decks tab so the user can review the card
+        setTimeout(() => router.push("/(tabs)/decks"), 120);
+      }
     });
 
     return () => sub.remove();

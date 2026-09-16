@@ -27,6 +27,9 @@ type RefocusState = {
   shuffleMode: boolean;
   shuffleDeckIds: string[];
 
+  rotationMode: boolean;
+  rotationIndex: number;
+
   setSelectedDeck: (deckId: string) => void;
   setEnforcementMode: (mode: EnforcementMode) => void;
   incrementSessionCount: () => void;
@@ -35,6 +38,8 @@ type RefocusState = {
   setShuffleMode: (enabled: boolean) => void;
   toggleShuffleDeck: (deckId: string) => void;
   setShuffleDeckIds: (ids: string[]) => void;
+  setRotationMode: (enabled: boolean) => void;
+  setRotationIndex: (index: number) => void;
   setCoins: (coins: number) => void;
   setSkipPasses: (count: number) => void;
   setQualifyingTestsCount: (count: number) => void;
@@ -63,6 +68,9 @@ export const useRefocusStore = create<RefocusState>((set) => ({
   shuffleMode: false,
   shuffleDeckIds: [],
 
+  rotationMode: false,
+  rotationIndex: 0,
+
   setSelectedDeck: (deckId) =>
     set({ selectedDeckId: deckId }),
 
@@ -81,6 +89,12 @@ export const useRefocusStore = create<RefocusState>((set) => ({
 
   setShuffleDeckIds: (ids) =>
     set({ shuffleDeckIds: ids }),
+
+  setRotationMode: (enabled) =>
+    set({ rotationMode: enabled }),
+
+  setRotationIndex: (index) =>
+    set({ rotationIndex: index }),
 
   incrementSessionCount: () =>
     set((state) => ({

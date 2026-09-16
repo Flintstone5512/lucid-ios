@@ -24,6 +24,10 @@ import {
   loadShuffleMode,
   saveShuffleDeckIds,
   loadShuffleDeckIds,
+  saveRotationMode,
+  loadRotationMode,
+  saveRotationIndex,
+  loadRotationIndex,
 } from "../../services/deckStorage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../../services/api";
@@ -95,6 +99,10 @@ export default function DecksScreen() {
     setShuffleMode,
     toggleShuffleDeck,
     setShuffleDeckIds,
+    rotationMode,
+    rotationIndex,
+    setRotationMode,
+    setRotationIndex,
   } = useRefocusStore();
   const { plan, adMode, limits, context } = useRefocusStore();
   const role = context?.role || "solo";
@@ -209,9 +217,16 @@ export default function DecksScreen() {
   }, [selectedChildId]);
 
   async function loadPersistedShuffleState() {
-    const [mode, ids] = await Promise.all([loadShuffleMode(), loadShuffleDeckIds()]);
+    const [mode, ids, rotMode, rotIdx] = await Promise.all([
+      loadShuffleMode(),
+      loadShuffleDeckIds(),
+      loadRotationMode(),
+      loadRotationIndex(),
+    ]);
     setShuffleMode(mode);
     setShuffleDeckIds(ids);
+    setRotationMode(rotMode);
+    setRotationIndex(rotIdx);
   }
 
   async function loadDecks() {
@@ -351,8 +366,25 @@ export default function DecksScreen() {
   async function handleShuffleModeToggle(enabled: boolean) {
     setShuffleMode(enabled);
     await saveShuffleMode(enabled);
-    if (!enabled) {
+    if (enabled) {
+      // Mutual exclusion — turn off rotation
+      setRotationMode(false);
+      await saveRotationMode(false);
+    } else {
       setStatus("");
+    }
+  }
+
+  async function handleRotationModeToggle(enabled: boolean) {
+    setRotationMode(enabled);
+    await saveRotationMode(enabled);
+    if (enabled) {
+      // Mutual exclusion — turn off shuffle
+      setShuffleMode(false);
+      await saveShuffleMode(false);
+      // Reset rotation index when enabling fresh
+      setRotationIndex(0);
+      await saveRotationIndex(0);
     }
   }
 
@@ -1162,39 +1194,80 @@ Examples:
 
       {/* SHUFFLE MODE TOGGLE — paid users only */}
       {isPaidUser && (
-        <View
-          style={{
-            marginTop: 12,
-            backgroundColor: "#161b22",
-            borderWidth: 1,
-            borderColor: shuffleMode
-              ? "rgba(110, 173, 235, 0.35)"
-              : "rgba(169, 189, 219, 0.12)",
-            borderRadius: 14,
-            padding: 14,
-            flexDirection: "row",
-            alignItems: "center",
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: "white", fontWeight: "700", fontSize: 15 }}>
-              Shuffle Mode
-            </Text>
-            <Text style={{ color: "#A9BDDB", fontSize: 12, marginTop: 3 }}>
-              {shuffleMode
-                ? shuffleDeckIds.length === 0
-                  ? "Select decks below to mix into one session"
-                  : `${shuffleDeckIds.length} deck${shuffleDeckIds.length !== 1 ? "s" : ""} selected — cards will shuffle together`
-                : "Mix cards from multiple decks in one session"}
-            </Text>
+        <>
+          <View
+            style={{
+              marginTop: 12,
+              backgroundColor: "#161b22",
+              borderWidth: 1,
+              borderColor: shuffleMode
+                ? "rgba(110, 173, 235, 0.35)"
+                : "rgba(169, 189, 219, 0.12)",
+              borderRadius: 14,
+              padding: 14,
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: "white", fontWeight: "700", fontSize: 15 }}>
+                Shuffle Mode
+              </Text>
+              <Text style={{ color: "#A9BDDB", fontSize: 12, marginTop: 3 }}>
+                {shuffleMode
+                  ? shuffleDeckIds.length === 0
+                    ? "Select decks below to mix into one session"
+                    : `${shuffleDeckIds.length} deck${shuffleDeckIds.length !== 1 ? "s" : ""} selected — cards will shuffle together`
+                  : "Mix cards from multiple decks in one session"}
+              </Text>
+            </View>
+            <Switch
+              value={shuffleMode}
+              onValueChange={handleShuffleModeToggle}
+              trackColor={{ false: "#2a2e36", true: "#6EADEB" }}
+              thumbColor={shuffleMode ? "#fff" : "#A9BDDB"}
+            />
           </View>
-          <Switch
-            value={shuffleMode}
-            onValueChange={handleShuffleModeToggle}
-            trackColor={{ false: "#2a2e36", true: "#6EADEB" }}
-            thumbColor={shuffleMode ? "#fff" : "#A9BDDB"}
-          />
-        </View>
+
+          {/* DECK ROTATION TOGGLE */}
+          <View
+            style={{
+              marginTop: 10,
+              backgroundColor: "#161b22",
+              borderWidth: 1,
+              borderColor: rotationMode
+                ? "rgba(216, 103, 50, 0.45)"
+                : "rgba(169, 189, 219, 0.12)",
+              borderRadius: 14,
+              padding: 14,
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: "white", fontWeight: "700", fontSize: 15 }}>
+                Deck Rotation
+              </Text>
+              <Text style={{ color: "#A9BDDB", fontSize: 12, marginTop: 3 }}>
+                {rotationMode
+                  ? shuffleDeckIds.length === 0
+                    ? "Select decks below to rotate through"
+                    : (() => {
+                        const upNextId = shuffleDeckIds[rotationIndex % shuffleDeckIds.length];
+                        const upNext = decks.find((d: any) => d._id === upNextId)?.name ?? "Unknown";
+                        return `${shuffleDeckIds.length} deck${shuffleDeckIds.length !== 1 ? "s" : ""} — Up next: ${upNext}`;
+                      })()
+                  : "Each session uses the next deck in sequence"}
+              </Text>
+            </View>
+            <Switch
+              value={rotationMode}
+              onValueChange={handleRotationModeToggle}
+              trackColor={{ false: "#2a2e36", true: "#D86732" }}
+              thumbColor={rotationMode ? "#fff" : "#A9BDDB"}
+            />
+          </View>
+        </>
       )}
 
       {decks.length === 0 ? (
@@ -1219,8 +1292,8 @@ Examples:
             deck.count ??
             0;
 
-          const isSingleSelected = !shuffleMode && selectedDeckId === deck._id;
-          const isShuffleSelected = shuffleMode && shuffleDeckIds.includes(deck._id);
+          const isSingleSelected = !shuffleMode && !rotationMode && selectedDeckId === deck._id;
+          const isShuffleSelected = (shuffleMode || rotationMode) && shuffleDeckIds.includes(deck._id);
           const isActive = isSingleSelected || isShuffleSelected;
 
           const bgColor = isSingleSelected
@@ -1248,13 +1321,13 @@ Examples:
             >
               <Pressable
                 onPress={() =>
-                  shuffleMode
+                  shuffleMode || rotationMode
                     ? handleShuffleDeckToggle(deck._id)
                     : selectDeck(deck._id)
                 }
                 style={{ flex: 1, padding: 14, flexDirection: "row", alignItems: "center" }}
               >
-                {shuffleMode && (
+                {(shuffleMode || rotationMode) && (
                   <View
                     style={{
                       width: 22,

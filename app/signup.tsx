@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Linking } from "react-native";
 import { router } from "expo-router";
 
 export default function SignupScreen() {
@@ -61,6 +61,21 @@ export default function SignupScreen() {
         <Pressable style={styles.button} onPress={handleSignup}>
           <Text style={styles.buttonText}>Create Account</Text>
         </Pressable>
+
+        <Text style={styles.legal}>
+          By creating an account you agree to our{" "}
+          <Text
+            style={styles.legalLink}
+            onPress={() =>
+              Linking.openURL(
+                "https://lucid-backend-production.up.railway.app/privacy"
+              )
+            }
+          >
+            Privacy Policy
+          </Text>
+          .
+        </Text>
       </View>
     </View>
   );
@@ -128,5 +143,18 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "800",
     fontSize: 16,
+  },
+
+  legal: {
+    color: "#64748B",
+    fontSize: 11,
+    textAlign: "center",
+    marginTop: 14,
+    lineHeight: 16,
+  },
+
+  legalLink: {
+    color: "#94A3B8",
+    textDecorationLine: "underline",
   },
 });
