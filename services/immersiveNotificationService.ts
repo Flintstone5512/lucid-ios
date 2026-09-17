@@ -4,12 +4,15 @@ export interface ImmersiveSettings {
   _id: string;
   userId: string;
   enabled: boolean;
+  paused: boolean;
   deckId: string | null;
   intervalMinutes: number;
   windowStart: string; // "HH:MM"
   windowEnd: string;   // "HH:MM"
   timezone: string;
   shuffleMode: boolean;
+  cardRangeStart: number | null;
+  cardRangeEnd: number | null;
   retiredCardIds: string[];
   cardQueue: string[];
   currentIndex: number;
@@ -22,7 +25,7 @@ export async function getImmersiveSettings(): Promise<ImmersiveSettings> {
 }
 
 export async function updateImmersiveSettings(
-  patch: Partial<Omit<ImmersiveSettings, "_id" | "userId" | "retiredCardIds" | "cardQueue" | "currentIndex" | "lastSentAt">>
+  patch: Partial<Omit<ImmersiveSettings, "_id" | "userId" | "retiredCardIds" | "cardQueue" | "lastSentAt">>
 ): Promise<ImmersiveSettings> {
   const res = await api.put("/immersive-notifications/settings", patch);
   return res.data.settings;

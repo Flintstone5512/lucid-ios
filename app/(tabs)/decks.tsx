@@ -158,6 +158,10 @@ export default function DecksScreen() {
   const [excelModalVisible, setExcelModalVisible] = useState(false);
   const [excelPreviewing, setExcelPreviewing] = useState(false);
 
+  // Append-to-deck state for import modals (null = create new deck)
+  const [ankiAppendTargetId, setAnkiAppendTargetId] = useState<string | null>(null);
+  const [excelAppendTargetId, setExcelAppendTargetId] = useState<string | null>(null);
+
   // AI preview state (text paste or file upload → preview → map → confirm)
   const [aiPreviewCards, setAiPreviewCards] = useState<AIPreviewCard[]>([]);
   const [aiPreviewDeckName, setAiPreviewDeckName] = useState("");
@@ -614,13 +618,15 @@ export default function DecksScreen() {
     try {
       const result = selectedChildId
         ? await importAnkiDeckForChild(pendingFile, frontFieldIndices, backFieldIndices, audioFieldIndex, importDeckName.trim() || undefined, selectedChildId)
-        : await importAnkiDeck(pendingFile, frontFieldIndices, backFieldIndices, audioFieldIndex, importDeckName.trim() || undefined);
+        : await importAnkiDeck(pendingFile, frontFieldIndices, backFieldIndices, audioFieldIndex, importDeckName.trim() || undefined, ankiAppendTargetId ?? undefined);
       await refreshUserContext();
       await loadDecks();
-      setStatus("✅ Deck imported");
-      const deckId = result?.deck?._id || result?.deckId || result?._id;
-      const deckName = importDeckName.trim() || result?.deck?.name || result?.deckName || result?.name || "Imported Deck";
-      if (deckId) {
+      setStatus(ankiAppendTargetId ? "✅ Cards appended to deck" : "✅ Deck imported");
+      const deckId = ankiAppendTargetId || result?.deck?._id || result?.deckId || result?._id;
+      const deckName = ankiAppendTargetId
+        ? (decks.find((d: any) => String(d._id) === ankiAppendTargetId)?.name ?? "Deck")
+        : (importDeckName.trim() || result?.deck?.name || result?.deckName || result?.name || "Imported Deck");
+      if (deckId && !ankiAppendTargetId) {
         setNewDeckGoalEnabled(false);
         setNewDeckGoalMonth(""); setNewDeckGoalDay(""); setNewDeckGoalYear("");
         setNewDeckGoalDeck({ _id: deckId, name: deckName });
@@ -632,6 +638,7 @@ export default function DecksScreen() {
       setLoading(false);
       setPendingFile(null);
       setAnkiPreview(null);
+      setAnkiAppendTargetId(null);
     }
   }
 
@@ -678,13 +685,15 @@ export default function DecksScreen() {
     try {
       const result = selectedChildId
         ? await importExcelDeckForChild(excelPendingFile, excelFrontIndices, excelBackIndices, excelDeckName.trim() || undefined, selectedChildId)
-        : await importExcelDeck(excelPendingFile, excelFrontIndices, excelBackIndices, excelDeckName.trim() || undefined);
+        : await importExcelDeck(excelPendingFile, excelFrontIndices, excelBackIndices, excelDeckName.trim() || undefined, excelAppendTargetId ?? undefined);
       await refreshUserContext();
       await loadDecks();
-      setStatus("✅ Deck imported");
-      const deckId = result?.deck?._id || result?.deckId || result?._id;
-      const deckName = excelDeckName.trim() || result?.deck?.name || result?.deckName || result?.name || "Imported Deck";
-      if (deckId) {
+      setStatus(excelAppendTargetId ? "✅ Cards appended to deck" : "✅ Deck imported");
+      const deckId = excelAppendTargetId || result?.deck?._id || result?.deckId || result?._id;
+      const deckName = excelAppendTargetId
+        ? (decks.find((d: any) => String(d._id) === excelAppendTargetId)?.name ?? "Deck")
+        : (excelDeckName.trim() || result?.deck?.name || result?.deckName || result?.name || "Imported Deck");
+      if (deckId && !excelAppendTargetId) {
         setNewDeckGoalEnabled(false);
         setNewDeckGoalMonth(""); setNewDeckGoalDay(""); setNewDeckGoalYear("");
         setNewDeckGoalDeck({ _id: deckId, name: deckName });
@@ -696,6 +705,7 @@ export default function DecksScreen() {
       setLoading(false);
       setExcelPendingFile(null);
       setExcelPreview(null);
+      setExcelAppendTargetId(null);
     }
   }
 
@@ -1494,7 +1504,7 @@ Examples:
         visible={fieldModalVisible}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => { setFieldModalVisible(false); setPendingFile(null); setAnkiPreview(null); }}
+        onRequestClose={() => { setFieldModalVisible(false); setPendingFile(null); setAnkiPreview(null); setAnkiAppendTargetId(null); }}
       >
         <AnkiFieldModal
           title="Map Card Fields"
@@ -1510,8 +1520,11 @@ Examples:
           deckName={importDeckName}
           onDeckNameChange={setImportDeckName}
           onConfirm={handleConfirmImport}
-          confirmLabel="Import Deck"
-          onCancel={() => { setFieldModalVisible(false); setPendingFile(null); setAnkiPreview(null); }}
+          confirmLabel={ankiAppendTargetId ? "Append to Deck" : "Import Deck"}
+          onCancel={() => { setFieldModalVisible(false); setPendingFile(null); setAnkiPreview(null); setAnkiAppendTargetId(null); }}
+          appendDecks={decks.map((d: any) => ({ _id: d._id, name: d.name, cardCount: d.cardCount }))}
+          appendTargetId={ankiAppendTargetId}
+          onAppendTargetChange={setAnkiAppendTargetId}
         />
       </Modal>
 
@@ -1520,7 +1533,7 @@ Examples:
         visible={excelModalVisible}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => { setExcelModalVisible(false); setExcelPendingFile(null); setExcelPreview(null); }}
+        onRequestClose={() => { setExcelModalVisible(false); setExcelPendingFile(null); setExcelPreview(null); setExcelAppendTargetId(null); }}
       >
         <AnkiFieldModal
           title="Map Spreadsheet Columns"
@@ -1536,9 +1549,12 @@ Examples:
           deckName={excelDeckName}
           onDeckNameChange={setExcelDeckName}
           onConfirm={handleConfirmExcelImport}
-          confirmLabel="Import Deck"
-          onCancel={() => { setExcelModalVisible(false); setExcelPendingFile(null); setExcelPreview(null); }}
+          confirmLabel={excelAppendTargetId ? "Append to Deck" : "Import Deck"}
+          onCancel={() => { setExcelModalVisible(false); setExcelPendingFile(null); setExcelPreview(null); setExcelAppendTargetId(null); }}
           showAudio={false}
+          appendDecks={decks.map((d: any) => ({ _id: d._id, name: d.name, cardCount: d.cardCount }))}
+          appendTargetId={excelAppendTargetId}
+          onAppendTargetChange={setExcelAppendTargetId}
         />
       </Modal>
 

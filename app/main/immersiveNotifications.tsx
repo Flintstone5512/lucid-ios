@@ -21,7 +21,7 @@ import {
 } from "../../services/immersiveNotificationService";
 import api from "../../services/api";
 
-const INTERVALS = [1, 5, 10, 15, 30, 120];
+const INTERVALS = [1, 2, 3, 4, 5, 10];
 
 // Build hour chips for window start/end — "06:00" through "23:00"
 const HOURS = Array.from({ length: 18 }, (_, i) => {
@@ -45,6 +45,9 @@ export default function ImmersiveNotificationsScreen() {
   const [previewing, setPreviewing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showRetired, setShowRetired] = useState(false);
+  // Raw text inputs for card range (so user can clear and retype)
+  const [rangeStartText, setRangeStartText] = useState("");
+  const [rangeEndText, setRangeEndText] = useState("");
 
   useEffect(() => {
     load();
@@ -56,14 +59,15 @@ export default function ImmersiveNotificationsScreen() {
         getImmersiveSettings(),
         api.get("/decks"),
       ]);
-      // Auto-fill timezone on first load if it's still UTC default
       if (!s.timezone || s.timezone === "UTC") {
         s.timezone = detectTimezone();
       }
       setSettings(s);
       setDecks(deckRes.data?.decks ?? deckRes.data ?? []);
+      setRangeStartText(s.cardRangeStart != null ? String(s.cardRangeStart) : "");
+      setRangeEndText(s.cardRangeEnd != null ? String(s.cardRangeEnd) : "");
     } catch (err) {
-      Alert.alert("Error", "Could not load immersive notification settings.");
+      Alert.alert("Error", "Could not load Cram Session settings.");
     } finally {
       setLoading(false);
     }
@@ -80,19 +84,40 @@ export default function ImmersiveNotificationsScreen() {
 
   async function save() {
     if (!settings) return;
+
+    // Parse range inputs
+    const parsedStart = rangeStartText.trim() ? parseInt(rangeStartText.trim(), 10) : null;
+    const parsedEnd = rangeEndText.trim() ? parseInt(rangeEndText.trim(), 10) : null;
+
+    if (parsedStart != null && isNaN(parsedStart)) {
+      Alert.alert("Invalid range", "Start card must be a number.");
+      return;
+    }
+    if (parsedEnd != null && isNaN(parsedEnd)) {
+      Alert.alert("Invalid range", "End card must be a number.");
+      return;
+    }
+    if (parsedStart != null && parsedEnd != null && parsedStart > parsedEnd) {
+      Alert.alert("Invalid range", "Start card must be less than or equal to end card.");
+      return;
+    }
+
     try {
       setSaving(true);
       const updated = await updateImmersiveSettings({
         enabled: settings.enabled,
+        paused: settings.paused,
         deckId: settings.deckId,
         intervalMinutes: settings.intervalMinutes,
         windowStart: settings.windowStart,
         windowEnd: settings.windowEnd,
         timezone: settings.timezone,
         shuffleMode: settings.shuffleMode,
+        cardRangeStart: parsedStart,
+        cardRangeEnd: parsedEnd,
       });
       setSettings(updated);
-      Alert.alert("Saved", "Immersive notification settings updated.");
+      Alert.alert("Saved", "Cram Session settings updated.");
     } catch {
       Alert.alert("Error", "Failed to save settings.");
     } finally {
@@ -138,6 +163,8 @@ export default function ImmersiveNotificationsScreen() {
     );
   }
 
+  const selectedDeck = decks.find((d) => String(d._id) === String(settings.deckId));
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 60 }}>
       {/* HEADER */}
@@ -145,7 +172,7 @@ export default function ImmersiveNotificationsScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </Pressable>
-        <Text style={styles.title}>Immersive Notifications</Text>
+        <Text style={styles.title}>Cram Session</Text>
       </View>
 
       <Text style={styles.subtitle}>
@@ -168,11 +195,37 @@ export default function ImmersiveNotificationsScreen() {
         </Pressable>
       </View>
 
+      {/* PAUSE / RESUME */}
+      {settings.enabled && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Session Control</Text>
+          <Text style={styles.hint}>
+            Pause keeps your place in the deck rotation. Resume picks up where you left off.
+          </Text>
+          <Pressable
+            onPress={() => patch({ paused: !settings.paused })}
+            style={[
+              styles.bigToggle,
+              settings.paused ? styles.pausedToggle : styles.resumedToggle,
+            ]}
+          >
+            <Text style={styles.toggleText}>
+              {settings.paused ? "⏸  Paused — Tap to Resume" : "▶  Running — Tap to Pause"}
+            </Text>
+          </Pressable>
+          {settings.currentIndex > 0 && (
+            <Text style={styles.progressHint}>
+              Position: card {settings.currentIndex} of {settings.cardQueue?.length ?? "?"} in current cycle
+            </Text>
+          )}
+        </View>
+      )}
+
       {/* DECK PICKER */}
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Select Deck</Text>
         <Text style={styles.hint}>
-          All non-retired cards in this deck will cycle through notifications.
+          Cards in this deck will cycle through your notifications.
         </Text>
         {decks.length === 0 ? (
           <Text style={styles.emptyText}>No decks found.</Text>
@@ -200,6 +253,47 @@ export default function ImmersiveNotificationsScreen() {
         )}
       </View>
 
+      {/* CARD RANGE */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Card Range</Text>
+        <Text style={styles.hint}>
+          Limit the session to a slice of the deck. Leave blank to use all cards.
+          {selectedDeck ? ` Deck has ${selectedDeck.cardCount ?? "?"} cards.` : ""}
+        </Text>
+        <View style={styles.rangeRow}>
+          <View style={styles.rangeField}>
+            <Text style={styles.rangeLabel}>From card #</Text>
+            <TextInput
+              style={styles.rangeInput}
+              value={rangeStartText}
+              onChangeText={setRangeStartText}
+              keyboardType="number-pad"
+              placeholder="1"
+              placeholderTextColor="#4a5a7a"
+              returnKeyType="done"
+            />
+          </View>
+          <Text style={styles.rangeSep}>—</Text>
+          <View style={styles.rangeField}>
+            <Text style={styles.rangeLabel}>To card #</Text>
+            <TextInput
+              style={styles.rangeInput}
+              value={rangeEndText}
+              onChangeText={setRangeEndText}
+              keyboardType="number-pad"
+              placeholder={selectedDeck ? String(selectedDeck.cardCount ?? "") : "end"}
+              placeholderTextColor="#4a5a7a"
+              returnKeyType="done"
+            />
+          </View>
+        </View>
+        {rangeStartText || rangeEndText ? (
+          <Pressable onPress={() => { setRangeStartText(""); setRangeEndText(""); }}>
+            <Text style={styles.clearRange}>Clear range (use all cards)</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
       {/* INTERVAL */}
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Notification Interval</Text>
@@ -219,7 +313,7 @@ export default function ImmersiveNotificationsScreen() {
                   settings.intervalMinutes === min && styles.chipTextActive,
                 ]}
               >
-                {min < 60 ? `${min}m` : `${min / 60}h`}
+                {min}m
               </Text>
             </Pressable>
           ))}
@@ -457,10 +551,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#3a4a6a",
   },
+  pausedToggle: {
+    backgroundColor: "#7C5C00",
+    borderWidth: 1,
+    borderColor: "#F0A500",
+  },
+  resumedToggle: {
+    backgroundColor: "#0E4D2E",
+    borderWidth: 1,
+    borderColor: "#1DB954",
+  },
   toggleText: {
     color: "#fff",
     fontWeight: "800",
     fontSize: 15,
+  },
+  progressHint: {
+    color: LucidTheme.sub,
+    fontSize: 11,
+    textAlign: "center",
+    marginTop: 8,
   },
   deckRow: {
     flexDirection: "row",
@@ -503,6 +613,46 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: "center",
     paddingVertical: 12,
+  },
+  rangeRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 12,
+    marginBottom: 8,
+  },
+  rangeField: {
+    flex: 1,
+  },
+  rangeLabel: {
+    color: LucidTheme.sub,
+    fontSize: 11,
+    fontWeight: "600",
+    marginBottom: 6,
+  },
+  rangeInput: {
+    backgroundColor: "#111d36",
+    borderRadius: 10,
+    padding: 12,
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+    borderWidth: 1,
+    borderColor: "#2a3a5a",
+    textAlign: "center",
+  },
+  rangeSep: {
+    color: LucidTheme.sub,
+    fontSize: 18,
+    fontWeight: "700",
+    paddingBottom: 12,
+  },
+  clearRange: {
+    color: LucidTheme.accent,
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
+    marginTop: 4,
+    paddingVertical: 4,
   },
   chipRow: {
     flexDirection: "row",

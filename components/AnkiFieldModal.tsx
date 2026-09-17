@@ -52,6 +52,7 @@ export function AnkiFieldModal({
   deckName, onDeckNameChange,
   onConfirm, confirmLabel, onCancel,
   showAudio = true,
+  appendDecks, appendTargetId, onAppendTargetChange,
 }: {
   title: string; subtitle: string;
   fields: string[];
@@ -63,6 +64,9 @@ export function AnkiFieldModal({
   deckName?: string; onDeckNameChange?: (name: string) => void;
   onConfirm: () => void; confirmLabel: string; onCancel: () => void;
   showAudio?: boolean;
+  appendDecks?: { _id: string; name: string; cardCount?: number }[];
+  appendTargetId?: string | null;
+  onAppendTargetChange?: (id: string | null) => void;
 }) {
   const frontPreviewFields = frontIndices.map((i) => sample[i]).filter(Boolean);
   const backPreviewFields  = backIndices.map((i) => sample[i]).filter(Boolean);
@@ -85,7 +89,75 @@ export function AnkiFieldModal({
       </View>
 
       <ScrollView style={{ flex: 1, padding: 20 }}>
-        {onDeckNameChange !== undefined && (
+
+        {/* DESTINATION: new deck vs append to existing */}
+        {appendDecks && appendDecks.length > 0 && onAppendTargetChange && (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ color: "#A9BDDB", fontWeight: "700", fontSize: 13, marginBottom: 8 }}>Destination</Text>
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+              <Pressable
+                onPress={() => onAppendTargetChange(null)}
+                style={{
+                  flex: 1, padding: 12, borderRadius: 10, alignItems: "center",
+                  backgroundColor: appendTargetId == null ? "#D86732" : "#161b22",
+                  borderWidth: 1, borderColor: appendTargetId == null ? "#D86732" : "#2a2e36",
+                }}
+              >
+                <Text style={{ color: appendTargetId == null ? "#fff" : "#A9BDDB", fontWeight: "700", fontSize: 13 }}>
+                  New Deck
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (appendTargetId == null && appendDecks.length > 0) {
+                    onAppendTargetChange(String(appendDecks[0]._id));
+                  }
+                }}
+                style={{
+                  flex: 1, padding: 12, borderRadius: 10, alignItems: "center",
+                  backgroundColor: appendTargetId != null ? "#D86732" : "#161b22",
+                  borderWidth: 1, borderColor: appendTargetId != null ? "#D86732" : "#2a2e36",
+                }}
+              >
+                <Text style={{ color: appendTargetId != null ? "#fff" : "#A9BDDB", fontWeight: "700", fontSize: 13 }}>
+                  Append to Deck
+                </Text>
+              </Pressable>
+            </View>
+
+            {appendTargetId != null && (
+              <View>
+                <Text style={{ color: "#777", fontSize: 12, marginBottom: 6 }}>Select target deck:</Text>
+                {appendDecks.map((d) => {
+                  const sel = String(d._id) === appendTargetId;
+                  return (
+                    <Pressable
+                      key={d._id}
+                      onPress={() => onAppendTargetChange(String(d._id))}
+                      style={{
+                        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                        backgroundColor: sel ? "rgba(216,103,50,0.15)" : "#161b22",
+                        borderWidth: 1, borderColor: sel ? "#D86732" : "#2a2e36",
+                        borderRadius: 10, padding: 12, marginBottom: 6,
+                      }}
+                    >
+                      <View>
+                        <Text style={{ color: sel ? "#D86732" : "white", fontWeight: "700", fontSize: 13 }}>{d.name}</Text>
+                        {d.cardCount != null && (
+                          <Text style={{ color: "#555", fontSize: 11, marginTop: 2 }}>{d.cardCount} cards</Text>
+                        )}
+                      </View>
+                      {sel && <Text style={{ color: "#D86732", fontSize: 16 }}>✓</Text>}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Deck name — only shown when creating a new deck */}
+        {onDeckNameChange !== undefined && appendTargetId == null && (
           <TextInput
             value={deckName}
             onChangeText={onDeckNameChange}

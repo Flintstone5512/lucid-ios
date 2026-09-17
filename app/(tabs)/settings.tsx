@@ -624,7 +624,7 @@ export default function SettingsScreen() {
           <View style={styles.referralLeft}>
             <Text style={styles.referralIcon}>🔔</Text>
             <View>
-              <Text style={styles.referralTitle}>Immersive Notifications</Text>
+              <Text style={styles.referralTitle}>Cram Session</Text>
               <Text style={styles.referralSub}>Study cards delivered to your lock screen</Text>
             </View>
           </View>

@@ -127,6 +127,7 @@ export async function importAnkiDeck(
   backFieldIndices: number[]  = [1],
   audioFieldIndex: number | null = null,
   deckName?: string,
+  targetDeckId?: string,
 ) {
   const form = new FormData();
 
@@ -142,6 +143,7 @@ export async function importAnkiDeck(
     form.append("audioFieldIndex", String(audioFieldIndex));
   }
   if (deckName) form.append("deckName", deckName);
+  if (targetDeckId) form.append("targetDeckId", targetDeckId);
 
   const res = await api.post("/import/apkg", form, {
     headers: { "Content-Type": "multipart/form-data" },
@@ -180,6 +182,7 @@ export async function importExcelDeck(
   frontFieldIndices: number[] = [0],
   backFieldIndices: number[]  = [1],
   deckName?: string,
+  targetDeckId?: string,
 ) {
   const form = new FormData();
 
@@ -192,6 +195,7 @@ export async function importExcelDeck(
   form.append("frontFieldIndices", JSON.stringify(frontFieldIndices));
   form.append("backFieldIndices",  JSON.stringify(backFieldIndices));
   if (deckName) form.append("deckName", deckName);
+  if (targetDeckId) form.append("targetDeckId", targetDeckId);
 
   const res = await api.post("/import/xlsx", form, {
     headers: { "Content-Type": "multipart/form-data" },
