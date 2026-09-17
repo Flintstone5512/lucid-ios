@@ -67,7 +67,7 @@ export default function ImmersiveNotificationsScreen() {
       setRangeStartText(s.cardRangeStart != null ? String(s.cardRangeStart) : "");
       setRangeEndText(s.cardRangeEnd != null ? String(s.cardRangeEnd) : "");
     } catch (err) {
-      Alert.alert("Error", "Could not load Cram Session settings.");
+      Alert.alert("Error", "Could not load Immersive Cram Session settings.");
     } finally {
       setLoading(false);
     }
@@ -117,7 +117,7 @@ export default function ImmersiveNotificationsScreen() {
         cardRangeEnd: parsedEnd,
       });
       setSettings(updated);
-      Alert.alert("Saved", "Cram Session settings updated.");
+      Alert.alert("Saved", "Immersive Cram Session settings updated.");
     } catch {
       Alert.alert("Error", "Failed to save settings.");
     } finally {
@@ -186,7 +186,7 @@ export default function ImmersiveNotificationsScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </Pressable>
-        <Text style={styles.title}>Cram Session</Text>
+        <Text style={styles.title}>Immersive Cram Session</Text>
       </View>
 
       <Text style={styles.subtitle}>
