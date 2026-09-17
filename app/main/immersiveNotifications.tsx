@@ -155,6 +155,20 @@ export default function ImmersiveNotificationsScreen() {
     setSettings((prev) => (prev ? { ...prev, ...changes } : prev));
   }
 
+  async function patchAndSave(changes: Partial<ImmersiveSettings>) {
+    if (!settings) return;
+    const next = { ...settings, ...changes };
+    setSettings(next);
+    try {
+      const updated = await updateImmersiveSettings(changes);
+      setSettings(updated);
+    } catch {
+      // Revert on failure
+      setSettings(settings);
+      Alert.alert("Error", "Failed to save. Please try again.");
+    }
+  }
+
   if (loading || !settings) {
     return (
       <View style={styles.center}>
@@ -183,14 +197,14 @@ export default function ImmersiveNotificationsScreen() {
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Status</Text>
         <Pressable
-          onPress={() => patch({ enabled: !settings.enabled })}
+          onPress={() => patchAndSave({ enabled: !settings.enabled })}
           style={[
             styles.bigToggle,
             settings.enabled ? styles.toggleOn : styles.toggleOff,
           ]}
         >
           <Text style={styles.toggleText}>
-            {settings.enabled ? "ON — Notifications Active" : "OFF — Tap to Enable"}
+            {settings.enabled ? "ON — Tap to Disable" : "OFF — Tap to Enable"}
           </Text>
         </Pressable>
       </View>
@@ -203,7 +217,7 @@ export default function ImmersiveNotificationsScreen() {
             Pause keeps your place in the deck rotation. Resume picks up where you left off.
           </Text>
           <Pressable
-            onPress={() => patch({ paused: !settings.paused })}
+            onPress={() => patchAndSave({ paused: !settings.paused })}
             style={[
               styles.bigToggle,
               settings.paused ? styles.pausedToggle : styles.resumedToggle,
