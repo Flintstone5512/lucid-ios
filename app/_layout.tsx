@@ -391,17 +391,55 @@ async function handleDeepLink(url: string) {
   }, []);
 
   /* =========================
-     🔔 IMMERSIVE CARD TAP
+     🔔 IMMERSIVE CARD TAP + ACTIONS
      Works on both iOS + Android
   ========================= */
 
   useEffect(() => {
+    // Register action buttons for Immersive Cram Session notifications
+    Notifications.setNotificationCategoryAsync("CRAM_CARD", [
+      {
+        identifier: "HARD",
+        buttonTitle: "🔴 Hard",
+        options: { opensAppToForeground: false },
+      },
+      {
+        identifier: "GOT_IT",
+        buttonTitle: "✅ Got it",
+        options: { opensAppToForeground: false },
+      },
+      {
+        identifier: "SKIP",
+        buttonTitle: "⏭ Skip",
+        options: { opensAppToForeground: false },
+      },
+    ]).catch(() => {});
+
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as any;
-      if (data?.type === "immersive_card") {
-        // Navigate to the decks tab so the user can review the card
-        setTimeout(() => router.push("/(tabs)/decks"), 120);
+      if (data?.type !== "immersive_card") return;
+
+      const actionId = response.actionIdentifier;
+      const cardId   = data?.cardId as string | undefined;
+
+      // Handle action button taps (fire-and-forget, no UI needed)
+      if (cardId && actionId && actionId !== Notifications.DEFAULT_ACTION_IDENTIFIER) {
+        const actionMap: Record<string, "hard" | "got_it" | "skip"> = {
+          HARD:   "hard",
+          GOT_IT: "got_it",
+          SKIP:   "skip",
+        };
+        const action = actionMap[actionId];
+        if (action) {
+          import("../services/immersiveNotificationService")
+            .then(({ recordCardAction }) => recordCardAction(cardId, action))
+            .catch(() => {});
+          return; // Don't navigate when an action button was tapped
+        }
       }
+
+      // Default tap → navigate to decks
+      setTimeout(() => router.push("/(tabs)/decks"), 120);
     });
 
     return () => sub.remove();

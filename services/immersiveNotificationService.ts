@@ -50,3 +50,10 @@ export async function sendPreview(): Promise<{ card: any; note: any }> {
   const res = await api.post("/immersive-notifications/preview");
   return res.data;
 }
+
+export async function recordCardAction(
+  cardId: string,
+  action: "hard" | "got_it" | "skip"
+): Promise<void> {
+  await api.post("/immersive-notifications/card-action", { cardId, action });
+}
