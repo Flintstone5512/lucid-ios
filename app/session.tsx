@@ -800,6 +800,15 @@ export default function SessionScreen() {
     }
   }
 
+  // Auto-release block when no cards are available — never leave user stuck
+  useEffect(() => {
+    if (!noCardsMode) return;
+    const timer = setTimeout(() => {
+      continueWithGrace();
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [noCardsMode]);
+
   useEffect(() => {
     if (!completed) return;
 
@@ -1139,24 +1148,22 @@ export default function SessionScreen() {
   if (noCardsMode) {
     return (
       <View style={styles.center}>
-        <Text style={styles.noCardsIcon}>🧠</Text>
+        <Text style={styles.noCardsIcon}>🎉</Text>
 
-        <Text style={styles.rewardTitle}>No cards available</Text>
+        <Text style={styles.rewardTitle}>All done for today!</Text>
 
         <Text style={styles.rewardSub}>
-          Your blocking is still ON.{"\n"}
-          We gave you {NO_CARDS_GRACE_MINUTES} minutes of temporary access so
-          you are not stuck.
+          You've completed all cards due today.{"\n"}
+          Your access is unlocked for {NO_CARDS_GRACE_MINUTES} minutes.{"\n\n"}
+          Returning you automatically...
         </Text>
 
-        <Pressable onPress={goAddDeck} style={styles.primaryBtn}>
-          <Text style={styles.primaryBtnText}>➕ Add Deck</Text>
+        <Pressable onPress={continueWithGrace} style={styles.primaryBtn}>
+          <Text style={styles.primaryBtnText}>✓ Return Now</Text>
         </Pressable>
 
-        <Pressable onPress={continueWithGrace} style={styles.secondaryBtn}>
-          <Text style={styles.secondaryBtnText}>
-            ⏳ Continue for now
-          </Text>
+        <Pressable onPress={goAddDeck} style={styles.secondaryBtn}>
+          <Text style={styles.secondaryBtnText}>➕ Add Another Deck</Text>
         </Pressable>
       </View>
     );
@@ -1165,7 +1172,10 @@ export default function SessionScreen() {
   if (!cards.length) {
     return (
       <View style={styles.center}>
-        <Text style={{ color: "white" }}>No cards available.</Text>
+        <Text style={{ color: "white", marginBottom: 20 }}>No cards available.</Text>
+        <Pressable onPress={continueWithGrace} style={styles.primaryBtn}>
+          <Text style={styles.primaryBtnText}>✓ Return</Text>
+        </Pressable>
       </View>
     );
   }
