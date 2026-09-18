@@ -57,3 +57,8 @@ export async function recordCardAction(
 ): Promise<void> {
   await api.post("/immersive-notifications/card-action", { cardId, action });
 }
+
+export async function rewindSession(steps: number): Promise<ImmersiveSettings> {
+  const res = await api.post("/immersive-notifications/rewind", { steps });
+  return res.data.settings;
+}

@@ -17,6 +17,7 @@ import {
   getRetiredCards,
   unretireCard,
   sendPreview,
+  rewindSession,
   ImmersiveSettings,
 } from "../../services/immersiveNotificationService";
 import api from "../../services/api";
@@ -48,6 +49,9 @@ export default function ImmersiveNotificationsScreen() {
   // Raw text inputs for card range (so user can clear and retype)
   const [rangeStartText, setRangeStartText] = useState("");
   const [rangeEndText, setRangeEndText] = useState("");
+  // Rewind
+  const [rewindText, setRewindText] = useState("10");
+  const [rewinding, setRewinding] = useState(false);
 
   useEffect(() => {
     load();
@@ -151,6 +155,24 @@ export default function ImmersiveNotificationsScreen() {
     }
   }
 
+  async function handleRewind() {
+    const steps = parseInt(rewindText.trim(), 10);
+    if (!steps || steps < 1) {
+      Alert.alert("Invalid", "Enter a positive number of cards to rewind.");
+      return;
+    }
+    try {
+      setRewinding(true);
+      const updated = await rewindSession(steps);
+      setSettings(updated);
+      Alert.alert("Rewound", `Queue moved back ${steps} card${steps === 1 ? "" : "s"}.`);
+    } catch (err: any) {
+      Alert.alert("Error", err?.response?.data?.error ?? "Rewind failed.");
+    } finally {
+      setRewinding(false);
+    }
+  }
+
   function patch(changes: Partial<ImmersiveSettings>) {
     setSettings((prev) => (prev ? { ...prev, ...changes } : prev));
   }
@@ -232,6 +254,28 @@ export default function ImmersiveNotificationsScreen() {
               Position: card {settings.currentIndex} of {settings.cardQueue?.length ?? "?"} in current cycle
             </Text>
           )}
+
+          {/* REWIND */}
+          <View style={styles.rewindRow}>
+            <TextInput
+              style={styles.rewindInput}
+              value={rewindText}
+              onChangeText={setRewindText}
+              keyboardType="number-pad"
+              returnKeyType="done"
+              selectTextOnFocus
+            />
+            <Pressable
+              onPress={handleRewind}
+              disabled={rewinding}
+              style={[styles.rewindBtn, rewinding && { opacity: 0.6 }]}
+            >
+              <Text style={styles.rewindBtnText}>
+                {rewinding ? "..." : "⏪ Rewind"}
+              </Text>
+            </Pressable>
+          </View>
+          <Text style={styles.rewindHint}>cards back in the queue</Text>
         </View>
       )}
 
@@ -802,5 +846,43 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 12,
+  },
+  rewindRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 14,
+  },
+  rewindInput: {
+    width: 64,
+    backgroundColor: "#111d36",
+    borderRadius: 10,
+    padding: 12,
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    borderWidth: 1,
+    borderColor: "#2a3a5a",
+    textAlign: "center",
+  },
+  rewindBtn: {
+    flex: 1,
+    backgroundColor: "#1b2540",
+    borderWidth: 1,
+    borderColor: "#4a6a9a",
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+  },
+  rewindBtnText: {
+    color: "#A9BDDB",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  rewindHint: {
+    color: LucidTheme.sub,
+    fontSize: 11,
+    marginTop: 5,
+    marginLeft: 2,
   },
 });
