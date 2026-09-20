@@ -31,7 +31,8 @@ export default {
         "com.apple.developer.family-controls": true,
         "com.apple.security.application-groups": [
           "group.com.yourapp.scrolltax"
-        ]
+        ],
+        "com.apple.developer.applesignin": ["Default"]
       }
     },
 
@@ -47,6 +48,7 @@ export default {
     plugins: [
       "expo-dev-client",
       "@stripe/stripe-react-native",
+      "expo-apple-authentication",
 
       [
         "expo-notifications",

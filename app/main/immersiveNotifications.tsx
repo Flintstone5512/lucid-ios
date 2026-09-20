@@ -22,7 +22,7 @@ import {
 } from "../../services/immersiveNotificationService";
 import api from "../../services/api";
 
-const INTERVALS = [1, 2, 3, 4, 5, 10];
+const INTERVALS = [0.5, 1, 2, 3, 4, 5];
 
 // Build hour chips for window start/end — "06:00" through "23:00"
 const HOURS = Array.from({ length: 18 }, (_, i) => {
@@ -371,7 +371,7 @@ export default function ImmersiveNotificationsScreen() {
                   settings.intervalMinutes === min && styles.chipTextActive,
                 ]}
               >
-                {min}m
+                {min === 0.5 ? "30s" : `${min}m`}
               </Text>
             </Pressable>
           ))}

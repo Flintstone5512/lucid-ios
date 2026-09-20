@@ -16,7 +16,7 @@ import { router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 
 import { bootstrapAuthToken, getContext } from "../services/api";
-import { getOnboardingComplete } from "../services/storage";
+import { getOnboardingComplete, getHasSeenIntro } from "../services/storage";
 
 // 🔥 prevent flicker
 SplashScreen.preventAutoHideAsync();
@@ -41,6 +41,17 @@ export default function Splash() {
         ========================= */
         const token = await bootstrapAuthToken();
 
+        /* =========================
+           🧠 INTRO CHECK (pre-auth)
+        ========================= */
+        const seenIntro = await getHasSeenIntro();
+
+        if (!seenIntro) {
+          await SplashScreen.hideAsync();
+          router.replace("/(onboarding)");
+          return;
+        }
+
         if (!token) {
           await SplashScreen.hideAsync();
           router.replace("/login");
@@ -48,7 +59,7 @@ export default function Splash() {
         }
 
         /* =========================
-           🧠 ONBOARDING CHECK
+           🧠 ONBOARDING CHECK (post-auth legacy)
         ========================= */
         const done = await getOnboardingComplete();
 

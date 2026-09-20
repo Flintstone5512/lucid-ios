@@ -16,6 +16,7 @@ import Animated, {
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as StoreReview from "expo-store-review";
 
 type MediaRef = { type: "image" | "audio" | "video"; url: string };
 
@@ -393,6 +394,9 @@ export default function SessionScreen() {
 
   useEffect(() => {
     console.log("✅ SESSION SCREEN MOUNTED");
+    getSharedState()
+      .then((state) => setStatePatch({ ...state, context: state.context }))
+      .catch(() => {});
     getSettings().then((res) => {
       const mins = res.settings?.timerPolicy?.unlockMinutes;
       if (mins && mins > 0) setPolicyMinutes(mins);
@@ -885,6 +889,16 @@ export default function SessionScreen() {
         return;
       }
 
+      // Prompt for an app store review after the user's very first completed session
+      try {
+        const firstSessionKey = "lucid_first_session_completed";
+        const alreadySeen = await AsyncStorage.getItem(firstSessionKey);
+        if (!alreadySeen && await StoreReview.hasAction()) {
+          await AsyncStorage.setItem(firstSessionKey, "1");
+          await StoreReview.requestReview();
+        }
+      } catch {}
+
       // Don't auto-navigate — let the completion screen show so the user can
       // press Home and return to Instagram without landing on the Lucid dashboard.
       await reopenBlockedApp();
@@ -973,6 +987,10 @@ export default function SessionScreen() {
         if (i === 1) throw err;
         await new Promise((r) => setTimeout(r, 100));
       }
+    }
+
+    if (res?.xp != null) {
+      setStatePatch({ usage: { ...usage, xp: res.xp } });
     }
 
     setMicroReward("+1");

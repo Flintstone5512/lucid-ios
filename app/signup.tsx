@@ -1,12 +1,45 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Linking } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  StyleSheet,
+  Linking,
+  Platform,
+  ActivityIndicator,
+} from "react-native";
 import { router } from "expo-router";
+import { setAuthToken } from "../services/api";
+import { getIOSAuthorizationStatus } from "../services/nativeBridge";
+import { signInWithGoogle, signInWithApple, isAppleSignInAvailable } from "../services/socialAuth";
 
 export default function SignupScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function afterSocialAuth(token: string) {
+    await setAuthToken(token);
+
+    if (Platform.OS === "ios") {
+      try {
+        const authStatus = await getIOSAuthorizationStatus();
+        if (authStatus?.status !== "approved") {
+          router.replace("/screens/IOSScreenTimeSetupScreen");
+          return;
+        }
+      } catch {
+        // Fall through if check fails
+      }
+    }
+
+    router.replace("/splash");
+  }
 
   async function handleSignup() {
+    if (!email || !password) return;
+    setLoading(true);
     try {
       const res = await fetch(
         "https://lucid-backend-production.up.railway.app/api/auth/signup",
@@ -28,6 +61,36 @@ export default function SignupScreen() {
     } catch (err) {
       console.error(err);
       alert("Network error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleGoogleSignup() {
+    setLoading(true);
+    try {
+      const token = await signInWithGoogle();
+      await afterSocialAuth(token);
+    } catch (err: any) {
+      if (err.message !== "Google sign-in cancelled") {
+        alert(err.message || "Google sign-in failed");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAppleSignup() {
+    setLoading(true);
+    try {
+      const token = await signInWithApple();
+      await afterSocialAuth(token);
+    } catch (err: any) {
+      if (err.code !== "ERR_REQUEST_CANCELED") {
+        alert(err.message || "Apple sign-in failed");
+      }
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -47,6 +110,8 @@ export default function SignupScreen() {
           value={email}
           onChangeText={setEmail}
           style={styles.input}
+          autoCapitalize="none"
+          keyboardType="email-address"
         />
 
         <TextInput
@@ -58,12 +123,52 @@ export default function SignupScreen() {
           style={styles.input}
         />
 
-        <Pressable style={styles.button} onPress={handleSignup}>
-          <Text style={styles.buttonText}>Create Account</Text>
+        <Pressable
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleSignup}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Create Account</Text>
+          )}
+        </Pressable>
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or continue with</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <View style={styles.socialRow}>
+          <Pressable
+            style={styles.socialButton}
+            onPress={handleGoogleSignup}
+            disabled={loading}
+          >
+            <Text style={styles.socialIcon}>G</Text>
+            <Text style={styles.socialText}>Google</Text>
+          </Pressable>
+
+          {isAppleSignInAvailable && (
+            <Pressable
+              style={styles.socialButton}
+              onPress={handleAppleSignup}
+              disabled={loading}
+            >
+              <Text style={styles.socialIcon}></Text>
+              <Text style={styles.socialText}>Apple</Text>
+            </Pressable>
+          )}
+        </View>
+
+        <Pressable onPress={() => router.push("/login")} disabled={loading}>
+          <Text style={styles.link}>Already have an account? Log in</Text>
         </Pressable>
 
         <Text style={styles.legal}>
-          By creating an account you agree to our{" "}
+          By continuing you agree to our{" "}
           <Text
             style={styles.legalLink}
             onPress={() =>
@@ -132,11 +237,15 @@ const styles = StyleSheet.create({
   },
 
   button: {
-    backgroundColor: "#F97316", // 🟠 ORANGE PRIMARY FOR ACTION
+    backgroundColor: "#F97316",
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: "center",
     marginTop: 10,
+  },
+
+  buttonDisabled: {
+    opacity: 0.6,
   },
 
   buttonText: {
@@ -145,11 +254,68 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 20,
+    gap: 10,
+  },
+
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#2A2E36",
+  },
+
+  dividerText: {
+    color: "#64748B",
+    fontSize: 12,
+  },
+
+  socialRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 16,
+  },
+
+  socialButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0B0F1A",
+    borderRadius: 12,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: "#2A2E36",
+    gap: 8,
+  },
+
+  socialIcon: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+
+  socialText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
+  link: {
+    color: "#F97316",
+    textAlign: "center",
+    marginTop: 4,
+    fontWeight: "600",
+    marginBottom: 12,
+  },
+
   legal: {
     color: "#64748B",
     fontSize: 11,
     textAlign: "center",
-    marginTop: 14,
+    marginTop: 6,
     lineHeight: 16,
   },
 
