@@ -10,7 +10,6 @@ export default function ValueScreen() {
       title="Turn scrolling into learning"
       subtitle="Learn → Unlock → Repeat"
       accentColor="#4fc3f7"
-      icon="⚡"
     >
       <View style={styles.bottom}>
         <Pressable

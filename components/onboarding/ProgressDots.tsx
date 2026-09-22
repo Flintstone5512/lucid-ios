@@ -3,9 +3,11 @@ import { View, StyleSheet } from "react-native";
 export default function ProgressDots({
   step,
   totalSteps,
+  accentColor = "#ff8a3d",
 }: {
   step: number;
   totalSteps: number;
+  accentColor?: string;
 }) {
   return (
     <View style={styles.row}>
@@ -14,7 +16,10 @@ export default function ProgressDots({
         return (
           <View
             key={index}
-            style={[styles.dot, active ? styles.activeDot : styles.inactiveDot]}
+            style={[
+              styles.dot,
+              { backgroundColor: active ? accentColor : "#1E2025" },
+            ]}
           />
         );
       })}
@@ -25,17 +30,11 @@ export default function ProgressDots({
 const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
-    gap: 8,
+    gap: 6,
   },
   dot: {
-    height: 8,
+    height: 3,
     borderRadius: 999,
     flex: 1,
-  },
-  activeDot: {
-    backgroundColor: "#fff",
-  },
-  inactiveDot: {
-    backgroundColor: "#2A2E36",
   },
 });
