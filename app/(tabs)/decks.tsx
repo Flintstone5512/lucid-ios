@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 
 import { generateDeck, importAnkiDeck, previewAnkiDeck, importExcelDeck, previewExcelDeck, remapDeckFields, previewAIDeck, previewAIDeckFromFile, confirmAIDeck, importAnkiDeckForChild, importExcelDeckForChild, CardType, AnkiPreview, AIPreviewCard } from "../../services/aiDeckService";
 import { AnkiFieldModal } from "../../components/AnkiFieldModal";
@@ -219,6 +220,12 @@ export default function DecksScreen() {
     loadDecks();
     loadPersistedShuffleState();
   }, [selectedChildId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (decks.length > 0) loadGoalProgress(decks);
+    }, [decks, selectedChildId])
+  );
 
   async function loadPersistedShuffleState() {
     const [mode, ids, rotMode, rotIdx] = await Promise.all([
