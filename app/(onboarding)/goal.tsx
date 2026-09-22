@@ -21,6 +21,8 @@ export default function GoalScreen() {
       totalSteps={8}
       title="What do you want to turn scrolling into?"
       subtitle="Pick your main goal. You can expand later."
+      accentColor="#a78bfa"
+      icon="🎯"
     >
       <OptionButton
         label="Learn language"

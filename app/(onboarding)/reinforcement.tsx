@@ -47,6 +47,8 @@ export default function ReinforcementScreen() {
       totalSteps={9}
       title={`You just earned ${state.rules.unlockMinutes} minutes.`}
       subtitle="Most people would have just scrolled. You’re different now."
+      accentColor="#fbbf24"
+      icon="🏆"
     >
       <View style={styles.bottom}>
         <Pressable style={styles.button} onPress={finish}>

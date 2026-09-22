@@ -27,6 +27,8 @@ export default function RulesScreen() {
       totalSteps={8}
       title="Set your rule"
       subtitle="Earn your scroll"
+      accentColor="#34d399"
+      icon="🔒"
     >
       <Pressable style={styles.card} onPress={() => select(5, 10)}>
         <Text style={styles.text}>5 → 10</Text>

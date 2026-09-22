@@ -9,6 +9,8 @@ export default function IdentityScreen() {
       totalSteps={8}
       title="You don’t have a focus problem."
       subtitle="You have a scroll loop problem."
+      accentColor="#ff8a3d"
+      icon="📵"
     >
       <View style={styles.bottom}>
         <Pressable
