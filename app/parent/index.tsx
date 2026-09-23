@@ -38,6 +38,7 @@ import {
   generateLinkCode,
   updateParentFocusMode,
 } from "../../services/parentService";
+import { deleteChildAccount } from "../../services/api";
 import {
   computeSmartBlockingPolicy,
   SmartBlockingResult,
@@ -1036,6 +1037,10 @@ const AFTER_SCHOOL_HOURS = [
 ];
 
 function ChildCard({ child, reload, onImportAnki, onImportExcel }: any) {
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   const [limit, setLimit] = useState(
     String(child.restrictions?.maxDailyMinutes || 60)
   );
@@ -1417,6 +1422,72 @@ function ChildCard({ child, reload, onImportAnki, onImportExcel }: any) {
       <Pressable style={styles.primaryBtn} onPress={save}>
         <Text style={styles.primaryBtnText}>Save Changes</Text>
       </Pressable>
+
+      <Pressable
+        style={childCardStyles.deleteChildBtn}
+        onPress={() => {
+          setDeleteConfirmText("");
+          setDeleteModalVisible(true);
+        }}
+      >
+        <Text style={childCardStyles.deleteChildBtnText}>Delete Child Account</Text>
+      </Pressable>
+
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteModalVisible(false)}
+      >
+        <View style={childCardStyles.modalOverlay}>
+          <View style={childCardStyles.modalCard}>
+            <Text style={childCardStyles.modalTitle}>Delete {child.name || "Child"}'s Account</Text>
+            <Text style={childCardStyles.modalBody}>
+              This will permanently delete {child.name || "this child"}'s account and all their data, including decks, reviews, and progress.
+              {"\n\n"}Type <Text style={{ color: "#FF4D4D", fontWeight: "800" }}>DELETE</Text> to confirm.
+            </Text>
+            <TextInput
+              style={childCardStyles.modalInput}
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              placeholder="Type DELETE here"
+              placeholderTextColor="#555"
+              autoCapitalize="characters"
+            />
+            <View style={childCardStyles.modalBtnRow}>
+              <Pressable
+                style={childCardStyles.modalCancelBtn}
+                onPress={() => setDeleteModalVisible(false)}
+                disabled={deleteLoading}
+              >
+                <Text style={childCardStyles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  childCardStyles.modalConfirmBtn,
+                  deleteConfirmText !== "DELETE" && { opacity: 0.4 },
+                ]}
+                disabled={deleteConfirmText !== "DELETE" || deleteLoading}
+                onPress={async () => {
+                  try {
+                    setDeleteLoading(true);
+                    await deleteChildAccount(child.userId);
+                    setDeleteModalVisible(false);
+                    reload();
+                  } catch {
+                    setDeleteLoading(false);
+                    Alert.alert("Error", "Failed to delete child account. Please try again.");
+                  }
+                }}
+              >
+                <Text style={childCardStyles.modalConfirmText}>
+                  {deleteLoading ? "Deleting..." : "Delete Forever"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1857,6 +1928,83 @@ const styles = StyleSheet.create({
     color: "#D86732",
     fontWeight: "700",
     fontSize: 12,
+  },
+});
+
+const childCardStyles = StyleSheet.create({
+  deleteChildBtn: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FF4D4D",
+    alignItems: "center",
+  },
+  deleteChildBtnText: {
+    color: "#FF4D4D",
+    fontWeight: "700",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: "#1b2540",
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+  },
+  modalTitle: {
+    color: "#FF4D4D",
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 12,
+  },
+  modalBody: {
+    color: "#A9BDDB",
+    fontSize: 14,
+    lineHeight: 21,
+    marginBottom: 20,
+  },
+  modalInput: {
+    backgroundColor: "#151820",
+    color: "white",
+    padding: 14,
+    borderRadius: 12,
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#FF4D4D44",
+  },
+  modalBtnRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    backgroundColor: "#2A2E36",
+    padding: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  modalCancelText: {
+    color: "#A9BDDB",
+    fontWeight: "700",
+  },
+  modalConfirmBtn: {
+    flex: 1,
+    backgroundColor: "#FF4D4D",
+    padding: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  modalConfirmText: {
+    color: "#fff",
+    fontWeight: "800",
   },
 });
 

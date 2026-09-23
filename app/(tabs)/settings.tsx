@@ -6,6 +6,9 @@ import {
   View,
   StyleSheet,
   ActivityIndicator,
+  Modal,
+  TextInput,
+  Alert,
 } from "react-native";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -17,7 +20,7 @@ import { refreshUserContext } from "../../services/contextService";
 import api from "../../services/api";
 import { LucidTheme } from "../../constants/lucidTheme";
 import { router } from "expo-router";
-import { clearAuthToken } from "../../services/api";
+import { clearAuthToken, deleteOwnAccount } from "../../services/api";
 import { syncEnforcementSettings } from "../../services/nativeBridge";
 import { syncEnforcementDecision } from "../../services/enforcementSync";
 import { syncSettings as syncScreenTimeSettings, applyShield, clearShield, setDailyLimit } from "../../modules/screen-time";
@@ -39,6 +42,9 @@ export default function SettingsScreen() {
   const [smartBlocking, setSmartBlocking] = useState(false);
   const [smartPolicy, setSmartPolicy] = useState<SmartBlockingResult | null>(null);
   const [smartLoading, setSmartLoading] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const { plan, adMode, context, selectedDeckId, shuffleMode, shuffleDeckIds } = useRefocusStore();
   const [adModeLoading, setAdModeLoading] = useState(false);
@@ -645,7 +651,76 @@ export default function SettingsScreen() {
         >
           <Text style={styles.logoutText}>Log Out</Text>
         </Pressable>
+
+        <Pressable
+          onPress={() => {
+            setDeleteConfirmText("");
+            setDeleteModalVisible(true);
+          }}
+          style={styles.deleteBtn}
+        >
+          <Text style={styles.deleteBtnText}>Delete Account</Text>
+        </Pressable>
       </View>
+
+      {/* DELETE ACCOUNT MODAL */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Delete Account</Text>
+            <Text style={styles.modalBody}>
+              This will permanently delete your account and all associated data.
+              {role === "parent" ? " All linked child accounts will also be deleted." : ""}
+              {"\n\n"}Type <Text style={{ color: "#FF4D4D", fontWeight: "800" }}>DELETE</Text> to confirm.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              placeholder="Type DELETE here"
+              placeholderTextColor="#555"
+              autoCapitalize="characters"
+            />
+            <View style={styles.modalBtnRow}>
+              <Pressable
+                style={styles.modalCancelBtn}
+                onPress={() => setDeleteModalVisible(false)}
+                disabled={deleteLoading}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.modalConfirmBtn,
+                  deleteConfirmText !== "DELETE" && { opacity: 0.4 },
+                ]}
+                disabled={deleteConfirmText !== "DELETE" || deleteLoading}
+                onPress={async () => {
+                  try {
+                    setDeleteLoading(true);
+                    await deleteOwnAccount();
+                    await clearAuthToken();
+                    setDeleteModalVisible(false);
+                    router.replace("/login");
+                  } catch (err) {
+                    setDeleteLoading(false);
+                    Alert.alert("Error", "Failed to delete account. Please try again.");
+                  }
+                }}
+              >
+                <Text style={styles.modalConfirmText}>
+                  {deleteLoading ? "Deleting..." : "Delete Forever"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -793,6 +868,93 @@ const styles = StyleSheet.create({
     color: "#FF6B6B",
     textAlign: "center",
     fontWeight: "700",
+  },
+
+  deleteBtn: {
+    backgroundColor: "transparent",
+    padding: 14,
+    borderRadius: 12,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "#FF4D4D",
+  },
+
+  deleteBtnText: {
+    color: "#FF4D4D",
+    textAlign: "center",
+    fontWeight: "700",
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+
+  modalCard: {
+    backgroundColor: "#1b2540",
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+  },
+
+  modalTitle: {
+    color: "#FF4D4D",
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 12,
+  },
+
+  modalBody: {
+    color: "#A9BDDB",
+    fontSize: 14,
+    lineHeight: 21,
+    marginBottom: 20,
+  },
+
+  modalInput: {
+    backgroundColor: "#151820",
+    color: "white",
+    padding: 14,
+    borderRadius: 12,
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#FF4D4D44",
+  },
+
+  modalBtnRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+
+  modalCancelBtn: {
+    flex: 1,
+    backgroundColor: "#2A2E36",
+    padding: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+
+  modalCancelText: {
+    color: "#A9BDDB",
+    fontWeight: "700",
+  },
+
+  modalConfirmBtn: {
+    flex: 1,
+    backgroundColor: "#FF4D4D",
+    padding: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+
+  modalConfirmText: {
+    color: "#fff",
+    fontWeight: "800",
   },
 
   referralCard: {

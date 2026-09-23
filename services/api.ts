@@ -212,6 +212,26 @@ export async function reportBlockingDisabled() {
   }
 }
 
+export async function deleteOwnAccount() {
+  const res = await api.delete("/me");
+  return res.data;
+}
+
+export async function deleteChildAccount(childId: string) {
+  const res = await api.delete(`/parent/children/${childId}`);
+  return res.data;
+}
+
+export async function deleteOwnAccount() {
+  const res = await api.delete("/me");
+  return res.data;
+}
+
+export async function deleteChildAccount(childId: string) {
+  const res = await api.delete(`/parent/children/${childId}`);
+  return res.data;
+}
+
 /* =========================
    🔥 EXPORT
 ========================= */
