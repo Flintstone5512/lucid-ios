@@ -301,6 +301,9 @@ export default function ParentDashboard() {
 
   useFocusEffect(
     useCallback(() => {
+      // Refresh dashboard data (Active Today, child stats) every time the tab gains focus
+      load();
+
       if (Platform.OS === "ios") {
         // Read the stored preference, not the live shield state.
         // The shield may be temporarily cleared during an unlock window after a

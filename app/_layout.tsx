@@ -396,7 +396,8 @@ async function handleDeepLink(url: string) {
   ========================= */
 
   useEffect(() => {
-    // Register action buttons for Immersive Cram Session notifications
+    // Register action buttons for Immersive Cram Session notifications.
+    // Long-press (iOS) or expand (Android) reveals these below the notification.
     Notifications.setNotificationCategoryAsync("CRAM_CARD", [
       {
         identifier: "HARD",
@@ -413,6 +414,11 @@ async function handleDeepLink(url: string) {
         buttonTitle: "⏭ Skip",
         options: { opensAppToForeground: false },
       },
+      {
+        identifier: "PAUSE",
+        buttonTitle: "⏸ Pause",
+        options: { opensAppToForeground: false },
+      },
     ]).catch(() => {});
 
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
@@ -423,14 +429,22 @@ async function handleDeepLink(url: string) {
       const cardId   = data?.cardId as string | undefined;
 
       // Handle action button taps (fire-and-forget, no UI needed)
-      if (cardId && actionId && actionId !== Notifications.DEFAULT_ACTION_IDENTIFIER) {
+      if (actionId && actionId !== Notifications.DEFAULT_ACTION_IDENTIFIER) {
+        // Pause action — no cardId needed
+        if (actionId === "PAUSE") {
+          import("../services/immersiveNotificationService")
+            .then(({ updateImmersiveSettings }) => updateImmersiveSettings({ paused: true }))
+            .catch(() => {});
+          return;
+        }
+
         const actionMap: Record<string, "hard" | "got_it" | "skip"> = {
           HARD:   "hard",
           GOT_IT: "got_it",
           SKIP:   "skip",
         };
         const action = actionMap[actionId];
-        if (action) {
+        if (action && cardId) {
           import("../services/immersiveNotificationService")
             .then(({ recordCardAction }) => recordCardAction(cardId, action))
             .catch(() => {});

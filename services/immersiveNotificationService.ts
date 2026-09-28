@@ -17,6 +17,8 @@ export interface ImmersiveSettings {
   cardQueue: string[];
   currentIndex: number;
   lastSentAt: string | null;
+  notifTitleFieldIndex: number;
+  notifBodyFieldIndex: number;
 }
 
 export async function getImmersiveSettings(): Promise<ImmersiveSettings> {
@@ -61,4 +63,13 @@ export async function recordCardAction(
 export async function rewindSession(steps: number): Promise<ImmersiveSettings> {
   const res = await api.post("/immersive-notifications/rewind", { steps });
   return res.data.settings;
+}
+
+export async function getDeckFields(): Promise<{
+  fields: string[];
+  titleIdx: number;
+  bodyIdx: number;
+}> {
+  const res = await api.get("/immersive-notifications/deck-fields");
+  return { fields: res.data.fields, titleIdx: res.data.titleIdx, bodyIdx: res.data.bodyIdx };
 }

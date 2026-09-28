@@ -20,6 +20,31 @@ export async function registerForPushNotifications() {
   return token;
 }
 
+export async function registerCramNotificationCategory() {
+  await Notifications.setNotificationCategoryAsync("CRAM_CARD", [
+    {
+      identifier: "pause_cram",
+      buttonTitle: "⏸ Pause Session",
+      options: {
+        // iOS: don't open the app when this action is tapped
+        opensAppToForeground: false,
+        isDestructive: false,
+        isAuthenticationRequired: false,
+      },
+    },
+    {
+      identifier: "got_it_cram",
+      buttonTitle: "✓ Got It",
+      options: { opensAppToForeground: false, isDestructive: false, isAuthenticationRequired: false },
+    },
+    {
+      identifier: "hard_cram",
+      buttonTitle: "✗ Hard",
+      options: { opensAppToForeground: false, isDestructive: false, isAuthenticationRequired: false },
+    },
+  ]);
+}
+
 export async function sendWastedTimeNotification(minutes: number) {
   await Notifications.scheduleNotificationAsync({
     content: {

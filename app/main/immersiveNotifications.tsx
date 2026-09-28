@@ -18,6 +18,7 @@ import {
   unretireCard,
   sendPreview,
   rewindSession,
+  getDeckFields,
   ImmersiveSettings,
 } from "../../services/immersiveNotificationService";
 import api from "../../services/api";
@@ -56,10 +57,18 @@ export default function ImmersiveNotificationsScreen() {
   // Rewind
   const [rewindText, setRewindText] = useState("10");
   const [rewinding, setRewinding] = useState(false);
+  // Notification content picker
+  const [deckFields, setDeckFields] = useState<string[]>([]);
+  const [fieldsLoading, setFieldsLoading] = useState(false);
 
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (settings?.deckId) loadDeckFields();
+    else setDeckFields([]);
+  }, [settings?.deckId]);
 
   async function load() {
     try {
@@ -87,6 +96,22 @@ export default function ImmersiveNotificationsScreen() {
       setRetiredCards(cards);
     } catch {
       setRetiredCards([]);
+    }
+  }
+
+  async function loadDeckFields() {
+    if (!settings?.deckId) {
+      setDeckFields([]);
+      return;
+    }
+    try {
+      setFieldsLoading(true);
+      const result = await getDeckFields();
+      setDeckFields(result.fields);
+    } catch {
+      setDeckFields([]);
+    } finally {
+      setFieldsLoading(false);
     }
   }
 
@@ -314,6 +339,87 @@ export default function ImmersiveNotificationsScreen() {
           })
         )}
       </View>
+
+      {/* NOTIFICATION CONTENT PICKER */}
+      {settings.deckId && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Notification Content</Text>
+          <Text style={styles.hint}>
+            Choose which field appears as the notification title and body. Long-press or expand a notification to see action buttons.
+          </Text>
+
+          {fieldsLoading ? (
+            <ActivityIndicator color={LucidTheme.accent} style={{ marginVertical: 12 }} />
+          ) : deckFields.length === 0 ? (
+            <Text style={styles.emptyText}>No field data available for this deck.</Text>
+          ) : (
+            <>
+              {/* Live preview */}
+              <View style={styles.notifPreview}>
+                <View style={styles.notifPreviewInner}>
+                  <Text style={styles.notifPreviewTitle} numberOfLines={2}>
+                    {deckFields[settings.notifTitleFieldIndex ?? 0] ?? deckFields[0] ?? "Card front"}
+                  </Text>
+                  <Text style={styles.notifPreviewBody} numberOfLines={3}>
+                    {deckFields[settings.notifBodyFieldIndex ?? 1] ?? deckFields[1] ?? "Card back"}
+                  </Text>
+                  <Text style={styles.notifPreviewActions}>⏸ Pause  ✅ Got it  🔴 Hard  ⏭ Skip</Text>
+                </View>
+              </View>
+
+              {/* Title field picker */}
+              <Text style={styles.fieldPickerLabel}>Title field (top line)</Text>
+              <View style={styles.chipRow}>
+                {deckFields.map((field, idx) => (
+                  <Pressable
+                    key={idx}
+                    onPress={() => patchAndSave({ notifTitleFieldIndex: idx })}
+                    style={[
+                      styles.chip,
+                      (settings.notifTitleFieldIndex ?? 0) === idx && styles.chipActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        (settings.notifTitleFieldIndex ?? 0) === idx && styles.chipTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      Field {idx + 1}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              {/* Body field picker */}
+              <Text style={[styles.fieldPickerLabel, { marginTop: 12 }]}>Body field (second line)</Text>
+              <View style={styles.chipRow}>
+                {deckFields.map((field, idx) => (
+                  <Pressable
+                    key={idx}
+                    onPress={() => patchAndSave({ notifBodyFieldIndex: idx })}
+                    style={[
+                      styles.chip,
+                      (settings.notifBodyFieldIndex ?? 1) === idx && styles.chipActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        (settings.notifBodyFieldIndex ?? 1) === idx && styles.chipTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      Field {idx + 1}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          )}
+        </View>
+      )}
 
       {/* CARD RANGE */}
       <View style={styles.card}>
@@ -888,5 +994,39 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 5,
     marginLeft: 2,
+  },
+  notifPreview: {
+    borderWidth: 1,
+    borderColor: "#2a3a5a",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 16,
+    backgroundColor: "#111d36",
+  },
+  notifPreviewInner: {
+    gap: 4,
+  },
+  notifPreviewTitle: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  notifPreviewBody: {
+    color: LucidTheme.sub,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  notifPreviewActions: {
+    color: LucidTheme.accent,
+    fontSize: 11,
+    fontWeight: "600",
+    marginTop: 8,
+  },
+  fieldPickerLabel: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 12,
+    marginBottom: 8,
   },
 });

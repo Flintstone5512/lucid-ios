@@ -75,7 +75,8 @@ export async function computeSmartBlockingPolicy(
   try {
     const res = await api.get("/decks/goals-summary");
     if (res.data?.ok) {
-      goalsSummary = res.data as GoalsSummary;
+      const { ok: _ok, ...summary } = res.data;
+      goalsSummary = summary as GoalsSummary;
     }
   } catch {}
 
@@ -177,13 +178,19 @@ export async function computeSmartBlockingPolicy(
   if (goalsSummary && goalsSummary.goals.length > 0) {
     const { goals, allOnTrack, mostUrgent } = goalsSummary;
 
-    // Prefer goals from the active session decks; fall back to all goals
-    const sessionGoals = activeDeckIds.size > 0
-      ? goals.filter((g) => activeDeckIds.has(g.deckId.toString()))
-      : goals;
-    const relevantGoals = sessionGoals.length > 0 ? sessionGoals : goals;
+    // Only consider goals that are still active (exam date hasn't passed)
+    const activeGoals = goals.filter((g) => g.daysRemaining > 0);
 
-    if (allOnTrack && relevantGoals.every((g) => g.masteryPct >= 80)) {
+    // Prefer goals from the active session decks; fall back to all active goals
+    const sessionGoals = activeDeckIds.size > 0
+      ? activeGoals.filter((g) => activeDeckIds.has(g.deckId.toString()))
+      : activeGoals;
+    const relevantGoals = sessionGoals.length > 0 ? sessionGoals : activeGoals;
+
+    if (relevantGoals.length === 0) {
+      // All goals have passed their exam date — no pressure to apply
+      reasoning.push("All exam dates have passed — standard settings applied.");
+    } else if (allOnTrack || relevantGoals.every((g) => g.masteryPct >= 80)) {
       // All goals well ahead — reward with eased requirements
       cardsRequired = Math.max(2, cardsRequired - 2);
       unlockMinutes = Math.min(45, unlockMinutes + 5);
@@ -191,11 +198,20 @@ export async function computeSmartBlockingPolicy(
         `All study goals on track (80%+ exam-ready) — rewarding with easier gates. Keep it up!`
       );
     } else {
-      // Most urgent goal sets the floor
-      const urgent = relevantGoals[0];
-      const days = urgent.daysRemaining;
+      // Use mostUrgent from server when available and in the relevant set,
+      // otherwise fall back to the highest urgency-score goal in relevantGoals
+      const serverUrgent =
+        mostUrgent && relevantGoals.some((g) => g.deckId === mostUrgent.deckId)
+          ? mostUrgent
+          : null;
+      const urgent =
+        serverUrgent ??
+        [...relevantGoals].sort((a, b) => b.urgencyScore - a.urgencyScore)[0];
+
+      const days = Math.max(1, urgent.daysRemaining); // guard: never treat as 0
       const pct = urgent.masteryPct;
-      const dailyNeeded = urgent.dailyCardsNeeded;
+      // Cap dailyCardsNeeded to a sane ceiling so a misconfigured goal can't lock the user
+      const dailyNeeded = Math.min(urgent.dailyCardsNeeded ?? 0, 12);
 
       if (days <= 3 && pct < 70) {
         cardsRequired = Math.max(cardsRequired + 3, dailyNeeded);
@@ -215,11 +231,10 @@ export async function computeSmartBlockingPolicy(
         );
       }
 
-      // Each additional urgent goal (days ≤ 14, pct < 75) adds +1 card — uncapped here,
-      // the 2–15 clamp below handles the ceiling so it never conflicts with challenges
-      const additionalUrgent = relevantGoals.slice(1).filter(
-        (g) => g.daysRemaining <= 14 && g.masteryPct < 75
-      );
+      // Each additional urgent goal (days ≤ 14, pct < 75) adds +1 card — capped by the 2–15 clamp below
+      const additionalUrgent = relevantGoals
+        .filter((g) => g.deckId !== urgent.deckId)
+        .filter((g) => g.daysRemaining <= 14 && g.masteryPct < 75);
       if (additionalUrgent.length > 0) {
         cardsRequired += additionalUrgent.length;
         const names = additionalUrgent.map((g) => `"${g.deckName}"`).join(", ");

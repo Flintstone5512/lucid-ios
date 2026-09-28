@@ -11,6 +11,7 @@ import {
   Switch,
   Platform,
   Image,
+  KeyboardAvoidingView,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
@@ -1596,8 +1597,16 @@ Examples:
         presentationStyle="pageSheet"
         onRequestClose={() => setNewDeckGoalDeck(null)}
       >
-        <View style={{ flex: 1, backgroundColor: "#0e1424" }}>
-          <View style={{ padding: 24, paddingTop: 56, flex: 1 }}>
+        <KeyboardAvoidingView
+          style={{ flex: 1, backgroundColor: "#0e1424" }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
+        >
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: 24, paddingTop: 56 }}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Step indicator */}
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 20 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
@@ -1688,30 +1697,30 @@ Examples:
               )}
             </View>
 
-            <Text style={{ color: "#4a5568", fontSize: 12, lineHeight: 18, marginBottom: 24 }}>
+            <Text style={{ color: "#4a5568", fontSize: 12, lineHeight: 18, marginBottom: 16 }}>
               You can always update or remove this goal from the deck's edit screen.
             </Text>
-          </View>
 
-          {/* Footer buttons */}
-          <View style={{ padding: 24, paddingBottom: 40, gap: 10 }}>
-            <Pressable
-              onPress={handleSaveNewDeckGoal}
-              disabled={newDeckGoalSaving}
-              style={{ backgroundColor: newDeckGoalEnabled ? "#4ade80" : "#D86732", borderRadius: 12, padding: 16, alignItems: "center" }}
-            >
-              <Text style={{ color: "#111", fontWeight: "700", fontSize: 16 }}>
-                {newDeckGoalSaving ? "Saving..." : newDeckGoalEnabled ? "Set Goal & Continue" : "Continue Without Goal"}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setNewDeckGoalDeck(null)}
-              style={{ padding: 14, alignItems: "center" }}
-            >
-              <Text style={{ color: "#4a5568", fontSize: 15 }}>Skip for now</Text>
-            </Pressable>
-          </View>
-        </View>
+            {/* Footer buttons (inside scroll so they're always reachable) */}
+            <View style={{ gap: 10, paddingBottom: 40 }}>
+              <Pressable
+                onPress={handleSaveNewDeckGoal}
+                disabled={newDeckGoalSaving}
+                style={{ backgroundColor: newDeckGoalEnabled ? "#4ade80" : "#D86732", borderRadius: 12, padding: 16, alignItems: "center" }}
+              >
+                <Text style={{ color: "#111", fontWeight: "700", fontSize: 16 }}>
+                  {newDeckGoalSaving ? "Saving..." : newDeckGoalEnabled ? "Set Goal & Continue" : "Continue Without Goal"}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setNewDeckGoalDeck(null)}
+                style={{ padding: 14, alignItems: "center" }}
+              >
+                <Text style={{ color: "#4a5568", fontSize: 15 }}>Skip for now</Text>
+              </Pressable>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* EDIT DECK MODAL */}
