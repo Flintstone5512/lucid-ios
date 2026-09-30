@@ -115,7 +115,7 @@ export async function previewAnkiDeck(file: {
 
   const res = await api.post("/import/apkg/preview", form, {
     headers: { "Content-Type": "multipart/form-data" },
-    timeout: 60000,
+    timeout: 120000, // 2 min — preview now only uploads sample media, but extraction takes time
   });
 
   return res.data;
@@ -147,7 +147,7 @@ export async function importAnkiDeck(
 
   const res = await api.post("/import/apkg", form, {
     headers: { "Content-Type": "multipart/form-data" },
-    timeout: 90000,
+    timeout: 300000, // 5 min — large decks (1000+ cards) need time for batched R2 uploads
   });
 
   return res.data;
@@ -256,7 +256,7 @@ export async function importAnkiDeckForChild(
 
   const res = await api.post("/import/apkg/for-child", form, {
     headers: { "Content-Type": "multipart/form-data" },
-    timeout: 90000,
+    timeout: 300000,
   });
 
   return res.data;
