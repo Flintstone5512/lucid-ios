@@ -432,7 +432,11 @@ async function handleDeepLink(url: string) {
       if (actionId && actionId !== Notifications.DEFAULT_ACTION_IDENTIFIER) {
         // Pause action — no cardId needed
         if (actionId === "PAUSE") {
-          import("../services/immersiveNotificationService")
+          // Bootstrap auth first: if app was relaunched from killed state, the token
+          // variable in api.ts may still be null when this listener fires.
+          bootstrapAuthToken()
+            .catch(() => {})
+            .then(() => import("../services/immersiveNotificationService"))
             .then(({ updateImmersiveSettings }) => updateImmersiveSettings({ paused: true }))
             .catch(() => {});
           return;
@@ -445,7 +449,9 @@ async function handleDeepLink(url: string) {
         };
         const action = actionMap[actionId];
         if (action && cardId) {
-          import("../services/immersiveNotificationService")
+          bootstrapAuthToken()
+            .catch(() => {})
+            .then(() => import("../services/immersiveNotificationService"))
             .then(({ recordCardAction }) => recordCardAction(cardId, action))
             .catch(() => {});
           return; // Don't navigate when an action button was tapped
