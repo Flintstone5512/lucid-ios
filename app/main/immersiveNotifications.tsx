@@ -139,7 +139,6 @@ export default function ImmersiveNotificationsScreen() {
       setSaving(true);
       const updated = await updateImmersiveSettings({
         enabled: settings.enabled,
-        paused: settings.paused,
         deckId: settings.deckId,
         intervalMinutes: settings.intervalMinutes,
         windowStart: settings.windowStart,
