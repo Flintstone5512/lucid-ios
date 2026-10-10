@@ -74,3 +74,27 @@ export async function getDeckFields(): Promise<{
   const res = await api.get("/immersive-notifications/deck-fields");
   return { fields: res.data.fields, titleIdx: res.data.titleIdx, bodyIdx: res.data.bodyIdx };
 }
+
+export interface WordVariation {
+  english: string;
+  pinyin: string;
+  chinese: string;
+}
+
+export async function getWordVariations(params: {
+  word: string;
+  context: string;
+  targetLanguage?: string;
+}): Promise<WordVariation[]> {
+  const res = await api.post("/immersive-notifications/word-variations", params);
+  return res.data.variations;
+}
+
+export async function createVariationCards(params: {
+  deckId: string;
+  variations: WordVariation[];
+  targetLanguage?: string;
+}): Promise<Array<{ _id: string; front: string; back: string }>> {
+  const res = await api.post("/immersive-notifications/variation-cards", params);
+  return res.data.cards;
+}

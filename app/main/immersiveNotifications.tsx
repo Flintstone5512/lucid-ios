@@ -22,7 +22,10 @@ import {
   sendPreview,
   rewindSession,
   getDeckFields,
+  getWordVariations,
+  createVariationCards,
   ImmersiveSettings,
+  WordVariation,
 } from "../../services/immersiveNotificationService";
 import api from "../../services/api";
 
@@ -66,6 +69,14 @@ export default function ImmersiveNotificationsScreen() {
   const [subDeckCards, setSubDeckCards] = useState<any[]>([]);
   const [subDeckLoading, setSubDeckLoading] = useState(false);
   const [subDeckSelected, setSubDeckSelected] = useState<Set<string>>(new Set());
+
+  // Word variation modal
+  const [wordVarVisible, setWordVarVisible] = useState(false);
+  const [wordVarCard, setWordVarCard] = useState<any>(null);
+  const [wordVarSelected, setWordVarSelected] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [generationResults, setGenerationResults] = useState<WordVariation[] | null>(null);
+  const [addingVariations, setAddingVariations] = useState(false);
 
   // Archive tabs
   const [retiredTab, setRetiredTab] = useState<"retired" | "active">("retired");
@@ -162,6 +173,54 @@ export default function ImmersiveNotificationsScreen() {
     const ids = Array.from(subDeckSelected);
     setSubDeckModalVisible(false);
     await patchAndSave({ subDeckCardIds: ids });
+  }
+
+  function openWordVarModal(card: any) {
+    setWordVarCard(card);
+    setWordVarSelected(null);
+    setGenerationResults(null);
+    setWordVarVisible(true);
+  }
+
+  async function handleGenerate() {
+    if (!wordVarSelected || !wordVarCard || !settings?.deckId) return;
+    const context = wordVarCard.front ?? wordVarCard.note?.fields?.[0] ?? "";
+    const cleanWord = wordVarSelected.replace(/[.,!?;:'"()[\]]/g, "").trim();
+    setGenerating(true);
+    try {
+      const results = await getWordVariations({ word: cleanWord, context });
+      setGenerationResults(results);
+    } catch (err: any) {
+      Alert.alert("Error", err?.response?.data?.error ?? "Generation failed.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleAddVariations() {
+    if (!generationResults || !settings?.deckId) return;
+    setAddingVariations(true);
+    try {
+      const newCards = await createVariationCards({
+        deckId: settings.deckId,
+        variations: generationResults,
+      });
+      setSubDeckSelected((prev) => {
+        const next = new Set(prev);
+        newCards.forEach((c) => next.add(String(c._id)));
+        return next;
+      });
+      setSubDeckCards((prev) => [
+        ...prev,
+        ...newCards.map((c) => ({ _id: c._id, front: c.front, back: c.back })),
+      ]);
+      setWordVarVisible(false);
+      Alert.alert("Added!", "2 new cards added to your sub-deck selection.");
+    } catch (err: any) {
+      Alert.alert("Error", err?.response?.data?.error ?? "Failed to create cards.");
+    } finally {
+      setAddingVariations(false);
+    }
   }
 
   async function save() {
@@ -781,6 +840,143 @@ export default function ImmersiveNotificationsScreen() {
         </View>
       </ScrollView>
 
+      {/* WORD VARIATION MODAL */}
+      <Modal
+        visible={wordVarVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setWordVarVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderLeft}>
+                <Text style={styles.modalTitle}>Generate Card Variations</Text>
+                <Text style={styles.modalSubtitle}>Tap a word, then generate 2 new cards</Text>
+              </View>
+              <Pressable onPress={() => setWordVarVisible(false)} style={styles.modalCloseBtn}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </Pressable>
+            </View>
+
+            {/* Source card preview */}
+            {wordVarCard && (
+              <View style={styles.wordVarSourceCard}>
+                <Text style={styles.wordVarSourceLabel}>Source card</Text>
+                <Text style={styles.wordVarSourceText}>
+                  {wordVarCard.front ?? wordVarCard.note?.fields?.[0] ?? ""}
+                </Text>
+              </View>
+            )}
+
+            {/* Word chips */}
+            {wordVarCard && !generationResults && (
+              <>
+                <Text style={styles.wordVarPickLabel}>Tap a word to focus on:</Text>
+                <View style={styles.wordChipRow}>
+                  {(wordVarCard.front ?? wordVarCard.note?.fields?.[0] ?? "")
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .map((word: string, idx: number) => {
+                      const isSelected = wordVarSelected === word;
+                      return (
+                        <Pressable
+                          key={`${word}-${idx}`}
+                          onPress={() => setWordVarSelected(isSelected ? null : word)}
+                          style={[styles.wordChip, isSelected && styles.wordChipSelected]}
+                        >
+                          <Text style={[styles.wordChipText, isSelected && styles.wordChipTextSelected]}>
+                            {word}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                </View>
+
+                {wordVarSelected && (
+                  <View style={styles.wordVarSelectedRow}>
+                    <Text style={styles.wordVarSelectedLabel}>
+                      Selected: <Text style={styles.wordVarSelectedWord}>"{wordVarSelected}"</Text>
+                    </Text>
+                  </View>
+                )}
+
+                <Pressable
+                  onPress={handleGenerate}
+                  disabled={!wordVarSelected || generating}
+                  style={[
+                    styles.generateBtn,
+                    (!wordVarSelected || generating) && { opacity: 0.4 },
+                  ]}
+                >
+                  <Text style={styles.generateBtnText}>
+                    {generating ? "Generating..." : "✨ Generate 2 cards"}
+                  </Text>
+                </Pressable>
+                {generating && (
+                  <ActivityIndicator color={LucidTheme.accent} style={{ marginTop: 8 }} />
+                )}
+              </>
+            )}
+
+            {/* Generation results */}
+            {generationResults && (
+              <>
+                <Text style={styles.wordVarPickLabel}>Generated cards — front / back:</Text>
+                {generationResults.map((v, idx) => {
+                  const [pinyin, chinese] = v.back
+                    ? [v.pinyin, v.chinese]
+                    : (v as any).back?.split("\n") ?? [v.pinyin, v.chinese];
+                  return (
+                    <View key={idx} style={styles.variationCard}>
+                      <View style={styles.variationCardSide}>
+                        <Text style={styles.variationSideLabel}>FRONT</Text>
+                        <Text style={styles.variationFront}>{v.english}</Text>
+                      </View>
+                      <View style={styles.variationDivider} />
+                      <View style={styles.variationCardSide}>
+                        <Text style={styles.variationSideLabel}>BACK</Text>
+                        <Text style={styles.variationPinyin}>{v.pinyin}</Text>
+                        <Text style={styles.variationChinese}>{v.chinese}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+
+                <Pressable
+                  onPress={() => {
+                    setGenerationResults(null);
+                    setWordVarSelected(null);
+                  }}
+                  style={styles.regenBtn}
+                >
+                  <Text style={styles.regenBtnText}>← Try a different word</Text>
+                </Pressable>
+              </>
+            )}
+
+            {/* Footer */}
+            <View style={styles.modalFooter}>
+              <Pressable onPress={() => setWordVarVisible(false)} style={styles.modalCancelBtn}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              {generationResults && (
+                <Pressable
+                  onPress={handleAddVariations}
+                  disabled={addingVariations}
+                  style={[styles.modalApplyBtn, addingVariations && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.modalApplyText}>
+                    {addingVariations ? "Adding..." : "Add 2 cards to sub-deck"}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* SUB-DECK MODAL */}
       <Modal
         visible={subDeckModalVisible}
@@ -847,31 +1043,40 @@ export default function ImmersiveNotificationsScreen() {
                   const front = item.front ?? item.note?.fields?.[0] ?? "(no content)";
                   const back = item.back ?? item.note?.fields?.[1] ?? "";
                   return (
-                    <Pressable
-                      onPress={() => {
-                        setSubDeckSelected((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(id)) next.delete(id);
-                          else next.add(id);
-                          return next;
-                        });
-                      }}
-                      style={[styles.modalCardRow, checked && styles.modalCardRowChecked]}
-                    >
-                      <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-                        {checked && <Text style={styles.checkboxMark}>✓</Text>}
-                      </View>
-                      <View style={styles.modalCardInfo}>
-                        <Text style={styles.modalCardFront} numberOfLines={2}>
-                          {front}
-                        </Text>
-                        {back ? (
-                          <Text style={styles.modalCardBack} numberOfLines={1}>
-                            {back}
+                    <View style={[styles.modalCardRow, checked && styles.modalCardRowChecked]}>
+                      <Pressable
+                        onPress={() => {
+                          setSubDeckSelected((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(id)) next.delete(id);
+                            else next.add(id);
+                            return next;
+                          });
+                        }}
+                        style={styles.modalCardCheckArea}
+                      >
+                        <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
+                          {checked && <Text style={styles.checkboxMark}>✓</Text>}
+                        </View>
+                        <View style={styles.modalCardInfo}>
+                          <Text style={styles.modalCardFront} numberOfLines={2}>
+                            {front}
                           </Text>
-                        ) : null}
-                      </View>
-                    </Pressable>
+                          {back ? (
+                            <Text style={styles.modalCardBack} numberOfLines={1}>
+                              {back}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => openWordVarModal(item)}
+                        style={styles.wordVarBtn}
+                        hitSlop={6}
+                      >
+                        <Text style={styles.wordVarBtnText}>✨</Text>
+                      </Pressable>
+                    </View>
                   );
                 }}
               />
@@ -1501,5 +1706,149 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "800",
     fontSize: 14,
+  },
+
+  // Sub-deck card row split (checkbox area + sparkle button)
+  modalCardCheckArea: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  wordVarBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    marginLeft: 4,
+  },
+  wordVarBtnText: {
+    fontSize: 18,
+  },
+
+  // Word variation modal
+  wordVarSourceCard: {
+    backgroundColor: "#111d36",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#2a3a5a",
+  },
+  wordVarSourceLabel: {
+    color: LucidTheme.sub,
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  wordVarSourceText: {
+    color: "#fff",
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "600",
+  },
+  wordVarPickLabel: {
+    color: LucidTheme.sub,
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 10,
+  },
+  wordChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 14,
+  },
+  wordChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: "#111d36",
+    borderWidth: 1,
+    borderColor: "#2a3a5a",
+  },
+  wordChipSelected: {
+    backgroundColor: LucidTheme.accent,
+    borderColor: LucidTheme.accent,
+  },
+  wordChipText: {
+    color: LucidTheme.sub,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  wordChipTextSelected: {
+    color: "#fff",
+  },
+  wordVarSelectedRow: {
+    marginBottom: 14,
+  },
+  wordVarSelectedLabel: {
+    color: LucidTheme.sub,
+    fontSize: 13,
+  },
+  wordVarSelectedWord: {
+    color: LucidTheme.accent,
+    fontWeight: "700",
+  },
+  generateBtn: {
+    backgroundColor: LucidTheme.accent,
+    borderRadius: 12,
+    padding: 14,
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  generateBtnText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 15,
+  },
+  variationCard: {
+    backgroundColor: "#111d36",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#2a3a5a",
+    marginBottom: 10,
+    overflow: "hidden",
+  },
+  variationCardSide: {
+    padding: 12,
+  },
+  variationDivider: {
+    height: 1,
+    backgroundColor: "#1e2a42",
+  },
+  variationSideLabel: {
+    color: LucidTheme.sub,
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  variationFront: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
+  },
+  variationPinyin: {
+    color: LucidTheme.accentSoft,
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  variationChinese: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  regenBtn: {
+    paddingVertical: 8,
+    marginBottom: 4,
+  },
+  regenBtnText: {
+    color: LucidTheme.accent,
+    fontSize: 13,
+    fontWeight: "600",
   },
 });
