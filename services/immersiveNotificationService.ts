@@ -77,8 +77,8 @@ export async function getDeckFields(): Promise<{
 
 export interface WordVariation {
   english: string;
-  pinyin: string;
-  chinese: string;
+  transliteration?: string; // Pinyin, Latin transliteration, etc. — present for non-Latin scripts
+  translation: string;       // Target language sentence
 }
 
 export async function getWordVariations(params: {

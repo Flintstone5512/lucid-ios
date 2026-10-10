@@ -924,25 +924,22 @@ export default function ImmersiveNotificationsScreen() {
             {generationResults && (
               <>
                 <Text style={styles.wordVarPickLabel}>Generated cards — front / back:</Text>
-                {generationResults.map((v, idx) => {
-                  const [pinyin, chinese] = v.back
-                    ? [v.pinyin, v.chinese]
-                    : (v as any).back?.split("\n") ?? [v.pinyin, v.chinese];
-                  return (
-                    <View key={idx} style={styles.variationCard}>
-                      <View style={styles.variationCardSide}>
-                        <Text style={styles.variationSideLabel}>FRONT</Text>
-                        <Text style={styles.variationFront}>{v.english}</Text>
-                      </View>
-                      <View style={styles.variationDivider} />
-                      <View style={styles.variationCardSide}>
-                        <Text style={styles.variationSideLabel}>BACK</Text>
-                        <Text style={styles.variationPinyin}>{v.pinyin}</Text>
-                        <Text style={styles.variationChinese}>{v.chinese}</Text>
-                      </View>
+                {generationResults.map((v, idx) => (
+                  <View key={idx} style={styles.variationCard}>
+                    <View style={styles.variationCardSide}>
+                      <Text style={styles.variationSideLabel}>FRONT</Text>
+                      <Text style={styles.variationFront}>{v.english}</Text>
                     </View>
-                  );
-                })}
+                    <View style={styles.variationDivider} />
+                    <View style={styles.variationCardSide}>
+                      <Text style={styles.variationSideLabel}>BACK</Text>
+                      {v.transliteration ? (
+                        <Text style={styles.variationPinyin}>{v.transliteration}</Text>
+                      ) : null}
+                      <Text style={styles.variationChinese}>{v.translation}</Text>
+                    </View>
+                  </View>
+                ))}
 
                 <Pressable
                   onPress={() => {
