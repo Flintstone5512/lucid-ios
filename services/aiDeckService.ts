@@ -84,6 +84,17 @@ export async function askAITutor(front: string, back: string): Promise<string> {
   return res.data.explanation;
 }
 
+export type TutorMessage = { role: "user" | "assistant"; content: string };
+
+export async function askAITutorChat(
+  front: string,
+  back: string,
+  messages: TutorMessage[],
+): Promise<string> {
+  const res = await api.post("/ai-tutor/chat", { front, back, messages });
+  return res.data.reply;
+}
+
 /* =========================
    🔥 IMPORT ANKI (.apkg)
 ========================= */

@@ -1,7 +1,7 @@
 import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Audio, Video, ResizeMode, InterruptionModeIOS, InterruptionModeAndroid } from "expo-av";
 import * as Speech from "expo-speech";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
@@ -299,7 +299,7 @@ const swipeStyles = StyleSheet.create({
 });
 
 import { showRewardedAd } from "../services/adService";
-import { askAITutor } from "../services/aiDeckService";
+import { askAITutor, askAITutorChat, TutorMessage } from "../services/aiDeckService";
 import api, { getSharedState } from "../services/api";
 import { syncEnforcementDecision } from "../services/enforcementSync";
 import { scheduleMotivationalNotification } from "../services/motivationalNotificationService";
@@ -339,7 +339,9 @@ export default function SessionScreen() {
 
   const [tutorVisible, setTutorVisible] = useState(false);
   const [tutorLoading, setTutorLoading] = useState(false);
-  const [tutorText, setTutorText] = useState("");
+  const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([]);
+  const [tutorInput, setTutorInput] = useState("");
+  const [tutorSending, setTutorSending] = useState(false);
 
   const [policyMinutes, setPolicyMinutes] = useState(1);
   const [swipeMode, setSwipeMode] = useState(true);
@@ -1122,15 +1124,37 @@ export default function SessionScreen() {
     const card = cards[index];
     if (!card) return;
     setTutorVisible(true);
-    setTutorText("");
+    setTutorMessages([]);
+    setTutorInput("");
     setTutorLoading(true);
     try {
       const explanation = await askAITutor(card.front, card.back);
-      setTutorText(explanation);
+      setTutorMessages([{ role: "assistant", content: explanation }]);
     } catch {
-      setTutorText("Sorry, couldn't load an explanation right now. Try again.");
+      setTutorMessages([{ role: "assistant", content: "Sorry, couldn't load an explanation right now. Try again." }]);
     } finally {
       setTutorLoading(false);
+    }
+  }
+
+  async function sendTutorMessage() {
+    const text = tutorInput.trim();
+    if (!text || tutorSending) return;
+    const card = cards[index];
+    if (!card) return;
+
+    const userMsg: TutorMessage = { role: "user", content: text };
+    const nextMessages = [...tutorMessages, userMsg];
+    setTutorMessages(nextMessages);
+    setTutorInput("");
+    setTutorSending(true);
+    try {
+      const reply = await askAITutorChat(card.front, card.back, nextMessages);
+      setTutorMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+    } catch {
+      setTutorMessages((prev) => [...prev, { role: "assistant", content: "Sorry, something went wrong. Try again." }]);
+    } finally {
+      setTutorSending(false);
     }
   }
 
@@ -1570,29 +1594,89 @@ export default function SessionScreen() {
         animationType="slide"
         onRequestClose={() => setTutorVisible(false)}
       >
-        <View style={styles.tutorOverlay}>
-          <View style={styles.tutorSheet}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <Text style={{ color: "white", fontWeight: "800", fontSize: 17 }}>🤖 AI Tutor</Text>
-              <Pressable onPress={() => setTutorVisible(false)}>
-                <Text style={{ color: "#A9BDDB", fontSize: 22, lineHeight: 24 }}>×</Text>
-              </Pressable>
-            </View>
-
-            {tutorLoading ? (
-              <View style={{ alignItems: "center", paddingVertical: 32 }}>
-                <ActivityIndicator color="#D86732" />
-                <Text style={{ color: "#A9BDDB", marginTop: 12 }}>Thinking...</Text>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View style={styles.tutorOverlay}>
+            <View style={styles.tutorSheet}>
+              {/* Header */}
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <Text style={{ color: "white", fontWeight: "800", fontSize: 17 }}>🤖 AI Tutor</Text>
+                <Pressable onPress={() => setTutorVisible(false)}>
+                  <Text style={{ color: "#A9BDDB", fontSize: 22, lineHeight: 24 }}>×</Text>
+                </Pressable>
               </View>
-            ) : (
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <Text style={{ color: "#e2e8f0", lineHeight: 24, fontSize: 15 }}>
-                  {tutorText}
-                </Text>
-              </ScrollView>
-            )}
+
+              {/* Message list */}
+              {tutorLoading ? (
+                <View style={{ alignItems: "center", paddingVertical: 32, flex: 1 }}>
+                  <ActivityIndicator color="#D86732" />
+                  <Text style={{ color: "#A9BDDB", marginTop: 12 }}>Thinking...</Text>
+                </View>
+              ) : (
+                <ScrollView
+                  style={{ flex: 1 }}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: 8 }}
+                  ref={(ref) => {
+                    if (ref && tutorMessages.length > 0) {
+                      setTimeout(() => ref.scrollToEnd({ animated: true }), 100);
+                    }
+                  }}
+                >
+                  {tutorMessages.map((msg, i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.tutorBubble,
+                        msg.role === "user" ? styles.tutorBubbleUser : styles.tutorBubbleAssistant,
+                      ]}
+                    >
+                      <Text style={[
+                        styles.tutorBubbleText,
+                        msg.role === "user" && { color: "#fff" },
+                      ]}>
+                        {msg.content}
+                      </Text>
+                    </View>
+                  ))}
+                  {tutorSending && (
+                    <View style={[styles.tutorBubble, styles.tutorBubbleAssistant]}>
+                      <ActivityIndicator size="small" color="#D86732" />
+                    </View>
+                  )}
+                </ScrollView>
+              )}
+
+              {/* Input row */}
+              {!tutorLoading && (
+                <View style={styles.tutorInputRow}>
+                  <TextInput
+                    style={styles.tutorTextInput}
+                    value={tutorInput}
+                    onChangeText={setTutorInput}
+                    placeholder="Ask a question about this card..."
+                    placeholderTextColor="#4a5568"
+                    multiline
+                    maxLength={500}
+                    returnKeyType="send"
+                    onSubmitEditing={sendTutorMessage}
+                    blurOnSubmit={false}
+                    editable={!tutorSending}
+                  />
+                  <Pressable
+                    onPress={sendTutorMessage}
+                    disabled={!tutorInput.trim() || tutorSending}
+                    style={[styles.tutorSendBtn, (!tutorInput.trim() || tutorSending) && { opacity: 0.4 }]}
+                  >
+                    <Text style={{ color: "#fff", fontSize: 18 }}>↑</Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -1793,10 +1877,66 @@ const styles = StyleSheet.create({
     backgroundColor: "#0f172a",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 24,
-    maxHeight: "70%",
+    padding: 20,
+    maxHeight: "80%",
+    minHeight: 320,
     borderTopWidth: 1,
     borderColor: "#2a2e36",
+    flex: 1,
+  },
+
+  tutorBubble: {
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 10,
+    maxWidth: "85%",
+  },
+
+  tutorBubbleAssistant: {
+    backgroundColor: "#1e2d45",
+    alignSelf: "flex-start",
+  },
+
+  tutorBubbleUser: {
+    backgroundColor: "#D86732",
+    alignSelf: "flex-end",
+  },
+
+  tutorBubbleText: {
+    color: "#e2e8f0",
+    lineHeight: 22,
+    fontSize: 14,
+  },
+
+  tutorInputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderColor: "#2a2e36",
+    paddingTop: 10,
+    gap: 8,
+  },
+
+  tutorTextInput: {
+    flex: 1,
+    backgroundColor: "#1b2540",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    color: "#e2e8f0",
+    fontSize: 14,
+    maxHeight: 100,
+  },
+
+  tutorSendBtn: {
+    backgroundColor: "#D86732",
+    borderRadius: 20,
+    width: 38,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   // ── Challenge Select ──
