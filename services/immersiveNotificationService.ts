@@ -19,6 +19,7 @@ export interface ImmersiveSettings {
   lastSentAt: string | null;
   notifTitleFieldIndex: number;
   notifBodyFieldIndex: number;
+  subDeckCardIds: string[];
 }
 
 export async function getImmersiveSettings(): Promise<ImmersiveSettings> {
