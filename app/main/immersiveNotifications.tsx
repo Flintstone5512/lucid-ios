@@ -9,7 +9,6 @@ import {
   Alert,
   TextInput,
   Modal,
-  FlatList,
 } from "react-native";
 import { router } from "expo-router";
 import { LucidTheme } from "../../constants/lucidTheme";
@@ -162,8 +161,9 @@ export default function ImmersiveNotificationsScreen() {
       const cards: any[] = res.data?.cards ?? res.data ?? [];
       setSubDeckCards(cards);
       setSubDeckSelected(new Set((settings?.subDeckCardIds ?? []).map(String)));
-    } catch {
+    } catch (err: any) {
       setSubDeckCards([]);
+      Alert.alert("Error", err?.response?.data?.error ?? err?.message ?? "Could not load cards.");
     } finally {
       setSubDeckLoading(false);
     }
@@ -1030,17 +1030,14 @@ export default function ImmersiveNotificationsScreen() {
             ) : subDeckCards.length === 0 ? (
               <Text style={styles.emptyText}>No cards found in this deck.</Text>
             ) : (
-              <FlatList
-                data={subDeckCards}
-                keyExtractor={(item) => String(item._id)}
-                style={styles.modalList}
-                renderItem={({ item }) => {
+              <ScrollView style={styles.modalList} nestedScrollEnabled>
+                {subDeckCards.map((item) => {
                   const id = String(item._id);
                   const checked = subDeckSelected.has(id);
                   const front = item.front ?? item.note?.fields?.[0] ?? "(no content)";
                   const back = item.back ?? item.note?.fields?.[1] ?? "";
                   return (
-                    <View style={[styles.modalCardRow, checked && styles.modalCardRowChecked]}>
+                    <View key={id} style={[styles.modalCardRow, checked && styles.modalCardRowChecked]}>
                       <Pressable
                         onPress={() => {
                           setSubDeckSelected((prev) => {
@@ -1075,8 +1072,8 @@ export default function ImmersiveNotificationsScreen() {
                       </Pressable>
                     </View>
                   );
-                }}
-              />
+                })}
+              </ScrollView>
             )}
 
             {/* Footer buttons */}
@@ -1621,7 +1618,8 @@ const styles = StyleSheet.create({
     marginLeft: "auto",
   },
   modalList: {
-    flex: 1,
+    maxHeight: 400,
+    flexShrink: 1,
   },
   modalCardRow: {
     flexDirection: "row",
