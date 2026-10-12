@@ -1,4 +1,5 @@
 import { StripeProvider } from "@stripe/stripe-react-native";
+import Superwall, { SuperwallProvider } from "expo-superwall";
 import * as ExpoLinking from "expo-linking";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -8,6 +9,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { OnboardingProvider } from "../context/OnboardingContext";
+import { LucidPurchaseController } from "../services/superwall/purchaseController";
 import {
   bootstrapAuthToken,
   registerPushToken,
@@ -76,6 +78,13 @@ export default function RootLayout() {
      🔥 DEEP LINK (CRITICAL FIX)
   ========================= */
 async function handleDeepLink(url: string) {
+  // Forward all deep links to Superwall first (handles paywall previews)
+  if (Platform.OS === "ios") {
+    try {
+      Superwall.shared.handleDeepLink(new URL(url));
+    } catch (_) {}
+  }
+
   if (!url.includes("scroll-tax://session")) return false;
 
   const now = Date.now();
@@ -480,17 +489,22 @@ async function handleDeepLink(url: string) {
   ========================= */
 
   return (
-    <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!}>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
-          <OnboardingProvider>
-            <Stack
-              screenOptions={{ headerShown: false }}
-              initialRouteName="index"
-            />
-          </OnboardingProvider>
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-    </StripeProvider>
+    <SuperwallProvider
+      apiKeys={{ ios: "pk_obxv04qBhDZ01_eUyr-v9" }}
+      purchaseController={new LucidPurchaseController()}
+    >
+      <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <SafeAreaProvider>
+            <OnboardingProvider>
+              <Stack
+                screenOptions={{ headerShown: false }}
+                initialRouteName="index"
+              />
+            </OnboardingProvider>
+          </SafeAreaProvider>
+        </GestureHandlerRootView>
+      </StripeProvider>
+    </SuperwallProvider>
   );
 }

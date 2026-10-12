@@ -23,6 +23,7 @@ import { router } from "expo-router";
 import { clearAuthToken, deleteOwnAccount } from "../../services/api";
 import { syncEnforcementSettings } from "../../services/nativeBridge";
 import { syncEnforcementDecision } from "../../services/enforcementSync";
+import { resetSuperwallUser } from "../../services/superwall/superwallService";
 import { syncSettings as syncScreenTimeSettings, applyShield, clearShield, setDailyLimit } from "../../modules/screen-time";
 import { startMonitoringBlockedApps, scheduleBlockNotification } from "../../services/nativeBridge";
 import { cancelGuiltNotifications, scheduleGuiltNotifications } from "../../services/motivationalNotificationService";
@@ -644,6 +645,7 @@ export default function SettingsScreen() {
 
         <Pressable
           onPress={async () => {
+            resetSuperwallUser();
             await clearAuthToken();
             router.replace("/login");
           }}
@@ -704,6 +706,7 @@ export default function SettingsScreen() {
                   try {
                     setDeleteLoading(true);
                     await deleteOwnAccount();
+                    resetSuperwallUser();
                     await clearAuthToken();
                     setDeleteModalVisible(false);
                     router.replace("/login");
