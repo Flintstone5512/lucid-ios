@@ -1,49 +1,34 @@
-import { Platform } from "react-native";
-import {
-  PurchaseController,
+import type {
+  CustomPurchaseControllerContext,
   PurchaseResult,
-  RestorationResult,
+  RestoreResult,
 } from "expo-superwall";
+import type { OnPurchaseParams } from "expo-superwall/build/src/SuperwallExpoModule.types";
 
-/**
- * Custom PurchaseController wires Superwall's paywall UI into your existing
- * billing backend. Fill in the TODO sections with your Stripe / StoreKit logic.
- *
- * iOS only — Android is excluded from this Superwall integration.
- */
-export class LucidPurchaseController extends PurchaseController {
-  async purchaseFromAppStore(productId: string): Promise<PurchaseResult> {
+export const lucidPurchaseController: CustomPurchaseControllerContext = {
+  async onPurchase(_params: OnPurchaseParams): Promise<PurchaseResult> {
     // TODO: Trigger your purchase flow here.
     //
     // Option A — Standard App Store IAP (StoreKit):
-    //   Use a StoreKit wrapper (e.g. expo-iap or RN IAP) to buy `productId`,
-    //   then validate the receipt server-side and return the result below.
+    //   Use expo-iap or react-native-iap to buy the product,
+    //   validate the receipt server-side, then return the result.
     //
     // Option B — Web checkout via Stripe:
     //   Open your Stripe-hosted checkout URL, wait for the redirect,
     //   confirm subscription status via your backend, then return the result.
     //
-    // PurchaseResult options:
-    //   PurchaseResult.Purchased()   — purchase succeeded
-    //   PurchaseResult.Cancelled()   — user cancelled
-    //   PurchaseResult.Pending()     — deferred / awaiting approval
-    //   PurchaseResult.Failed(error) — unexpected error
-    console.warn(
-      `[Superwall] purchaseFromAppStore called for product: ${productId}. ` +
-        "Implement your billing logic here."
-    );
-    return PurchaseResult.Cancelled();
-  }
+    // PurchaseResult: { type: "purchased" | "cancelled" | "pending" | "failed", error?: string }
+    console.warn("[Superwall] onPurchase called. Implement billing logic.");
+    return { type: "cancelled" };
+  },
 
-  async restorePurchases(): Promise<RestorationResult> {
+  async onPurchaseRestore(): Promise<RestoreResult> {
     // TODO: Restore purchases via your billing backend.
     // Call your server to check if this user has an active subscription
     // and update subscriptionStatus accordingly (see superwallService.ts).
     //
-    // RestorationResult options:
-    //   RestorationResult.Restored()     — restore succeeded
-    //   RestorationResult.Failed(error)  — restore failed
-    console.warn("[Superwall] restorePurchases called. Implement restore logic here.");
-    return RestorationResult.Restored();
-  }
-}
+    // RestoreResult: { type: "restored" | "failed", error?: string }
+    console.warn("[Superwall] onPurchaseRestore called. Implement restore logic.");
+    return { type: "restored" };
+  },
+};
