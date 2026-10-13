@@ -69,8 +69,8 @@ export default function ImmersiveNotificationsScreen() {
   const [subDeckLoading, setSubDeckLoading] = useState(false);
   const [subDeckSelected, setSubDeckSelected] = useState<Set<string>>(new Set());
 
-  // Word variation modal
-  const [wordVarVisible, setWordVarVisible] = useState(false);
+  // Word variation view (inside sub-deck modal — no separate Modal)
+  const [subDeckView, setSubDeckView] = useState<"cards" | "wordvar">("cards");
   const [wordVarCard, setWordVarCard] = useState<any>(null);
   const [wordVarSelected, setWordVarSelected] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -169,17 +169,18 @@ export default function ImmersiveNotificationsScreen() {
     }
   }
 
-  async function applySubDeck() {
+  function applySubDeck() {
     const ids = Array.from(subDeckSelected);
+    patch({ subDeckCardIds: ids });
     setSubDeckModalVisible(false);
-    await patchAndSave({ subDeckCardIds: ids });
+    setSubDeckView("cards");
   }
 
   function openWordVarModal(card: any) {
     setWordVarCard(card);
     setWordVarSelected(null);
     setGenerationResults(null);
-    setWordVarVisible(true);
+    setSubDeckView("wordvar");
   }
 
   async function handleGenerate() {
@@ -214,7 +215,7 @@ export default function ImmersiveNotificationsScreen() {
         ...prev,
         ...newCards.map((c) => ({ _id: c._id, front: c.front, back: c.back })),
       ]);
-      setWordVarVisible(false);
+      setSubDeckView("cards");
       Alert.alert("Added!", "2 new cards added to your sub-deck selection.");
     } catch (err: any) {
       Alert.alert("Error", err?.response?.data?.error ?? "Failed to create cards.");
@@ -840,259 +841,241 @@ export default function ImmersiveNotificationsScreen() {
         </View>
       </ScrollView>
 
-      {/* WORD VARIATION MODAL */}
-      <Modal
-        visible={wordVarVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setWordVarVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            {/* Header */}
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderLeft}>
-                <Text style={styles.modalTitle}>Generate Card Variations</Text>
-                <Text style={styles.modalSubtitle}>Tap a word, then generate 2 new cards</Text>
-              </View>
-              <Pressable onPress={() => setWordVarVisible(false)} style={styles.modalCloseBtn}>
-                <Text style={styles.modalCloseText}>✕</Text>
-              </Pressable>
-            </View>
-
-            {/* Source card preview */}
-            {wordVarCard && (
-              <View style={styles.wordVarSourceCard}>
-                <Text style={styles.wordVarSourceLabel}>Source card</Text>
-                <Text style={styles.wordVarSourceText}>
-                  {wordVarCard.front ?? wordVarCard.note?.fields?.[0] ?? ""}
-                </Text>
-              </View>
-            )}
-
-            {/* Word chips */}
-            {wordVarCard && !generationResults && (
-              <>
-                <Text style={styles.wordVarPickLabel}>Tap a word to focus on:</Text>
-                <View style={styles.wordChipRow}>
-                  {(wordVarCard.front ?? wordVarCard.note?.fields?.[0] ?? "")
-                    .split(/\s+/)
-                    .filter(Boolean)
-                    .map((word: string, idx: number) => {
-                      const isSelected = wordVarSelected === word;
-                      return (
-                        <Pressable
-                          key={`${word}-${idx}`}
-                          onPress={() => setWordVarSelected(isSelected ? null : word)}
-                          style={[styles.wordChip, isSelected && styles.wordChipSelected]}
-                        >
-                          <Text style={[styles.wordChipText, isSelected && styles.wordChipTextSelected]}>
-                            {word}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                </View>
-
-                {wordVarSelected && (
-                  <View style={styles.wordVarSelectedRow}>
-                    <Text style={styles.wordVarSelectedLabel}>
-                      Selected: <Text style={styles.wordVarSelectedWord}>"{wordVarSelected}"</Text>
-                    </Text>
-                  </View>
-                )}
-
-                <Pressable
-                  onPress={handleGenerate}
-                  disabled={!wordVarSelected || generating}
-                  style={[
-                    styles.generateBtn,
-                    (!wordVarSelected || generating) && { opacity: 0.4 },
-                  ]}
-                >
-                  <Text style={styles.generateBtnText}>
-                    {generating ? "Generating..." : "✨ Generate 2 cards"}
-                  </Text>
-                </Pressable>
-                {generating && (
-                  <ActivityIndicator color={LucidTheme.accent} style={{ marginTop: 8 }} />
-                )}
-              </>
-            )}
-
-            {/* Generation results */}
-            {generationResults && (
-              <>
-                <Text style={styles.wordVarPickLabel}>Generated cards — front / back:</Text>
-                {generationResults.map((v, idx) => (
-                  <View key={idx} style={styles.variationCard}>
-                    <View style={styles.variationCardSide}>
-                      <Text style={styles.variationSideLabel}>FRONT</Text>
-                      <Text style={styles.variationFront}>{v.english}</Text>
-                    </View>
-                    <View style={styles.variationDivider} />
-                    <View style={styles.variationCardSide}>
-                      <Text style={styles.variationSideLabel}>BACK</Text>
-                      {v.transliteration ? (
-                        <Text style={styles.variationPinyin}>{v.transliteration}</Text>
-                      ) : null}
-                      <Text style={styles.variationChinese}>{v.translation}</Text>
-                    </View>
-                  </View>
-                ))}
-
-                <Pressable
-                  onPress={() => {
-                    setGenerationResults(null);
-                    setWordVarSelected(null);
-                  }}
-                  style={styles.regenBtn}
-                >
-                  <Text style={styles.regenBtnText}>← Try a different word</Text>
-                </Pressable>
-              </>
-            )}
-
-            {/* Footer */}
-            <View style={styles.modalFooter}>
-              <Pressable onPress={() => setWordVarVisible(false)} style={styles.modalCancelBtn}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </Pressable>
-              {generationResults && (
-                <Pressable
-                  onPress={handleAddVariations}
-                  disabled={addingVariations}
-                  style={[styles.modalApplyBtn, addingVariations && { opacity: 0.6 }]}
-                >
-                  <Text style={styles.modalApplyText}>
-                    {addingVariations ? "Adding..." : "Add 2 cards to sub-deck"}
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* SUB-DECK MODAL */}
+      {/* SUB-DECK MODAL — card list view and word-variation view share one Modal */}
       <Modal
         visible={subDeckModalVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setSubDeckModalVisible(false)}
+        onRequestClose={() => {
+          setSubDeckModalVisible(false);
+          setSubDeckView("cards");
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
-            {/* Modal header */}
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderLeft}>
-                <Text style={styles.modalTitle}>Filter Cards</Text>
-                {subDeckModalDeck && (
-                  <Text style={styles.modalSubtitle}>{subDeckModalDeck.name}</Text>
+
+            {/* ── VIEW 1: card picker ── */}
+            {subDeckView === "cards" && (
+              <>
+                <View style={styles.modalHeader}>
+                  <View style={styles.modalHeaderLeft}>
+                    <Text style={styles.modalTitle}>Filter Cards</Text>
+                    {subDeckModalDeck && (
+                      <Text style={styles.modalSubtitle}>{subDeckModalDeck.name}</Text>
+                    )}
+                  </View>
+                  <Pressable
+                    onPress={() => { setSubDeckModalVisible(false); setSubDeckView("cards"); }}
+                    style={styles.modalCloseBtn}
+                  >
+                    <Text style={styles.modalCloseText}>✕</Text>
+                  </Pressable>
+                </View>
+
+                <Text style={styles.modalHint}>
+                  Select cards for your notification rotation. Tap ✨ on a card to generate AI variations from a word. Hit Save Settings after applying.
+                </Text>
+
+                {!subDeckLoading && subDeckCards.length > 0 && (
+                  <View style={styles.modalSelectRow}>
+                    <Pressable
+                      onPress={() => setSubDeckSelected(new Set(subDeckCards.map((c: any) => String(c._id))))}
+                      style={styles.modalSelectBtn}
+                    >
+                      <Text style={styles.modalSelectBtnText}>Select all</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setSubDeckSelected(new Set())}
+                      style={styles.modalSelectBtn}
+                    >
+                      <Text style={styles.modalSelectBtnText}>Clear all</Text>
+                    </Pressable>
+                    <Text style={styles.modalSelectionCount}>
+                      {subDeckSelected.size} selected
+                    </Text>
+                  </View>
                 )}
-              </View>
-              <Pressable
-                onPress={() => setSubDeckModalVisible(false)}
-                style={styles.modalCloseBtn}
-              >
-                <Text style={styles.modalCloseText}>✕</Text>
-              </Pressable>
-            </View>
 
-            <Text style={styles.modalHint}>
-              Select the cards you want in your notification rotation. Leave all unselected to use the full deck.
-            </Text>
+                {subDeckLoading ? (
+                  <ActivityIndicator color={LucidTheme.accent} style={{ marginVertical: 24 }} />
+                ) : subDeckCards.length === 0 ? (
+                  <Text style={styles.emptyText}>No cards found in this deck.</Text>
+                ) : (
+                  <ScrollView style={styles.modalList}>
+                    {subDeckCards.map((item) => {
+                      const id = String(item._id);
+                      const checked = subDeckSelected.has(id);
+                      const front = item.front ?? item.note?.fields?.[0] ?? "(no content)";
+                      const back = item.back ?? item.note?.fields?.[1] ?? "";
+                      return (
+                        <View key={id} style={[styles.modalCardRow, checked && styles.modalCardRowChecked]}>
+                          <Pressable
+                            onPress={() => {
+                              setSubDeckSelected((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(id)) next.delete(id);
+                                else next.add(id);
+                                return next;
+                              });
+                            }}
+                            style={styles.modalCardCheckArea}
+                          >
+                            <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
+                              {checked && <Text style={styles.checkboxMark}>✓</Text>}
+                            </View>
+                            <View style={styles.modalCardInfo}>
+                              <Text style={styles.modalCardFront} numberOfLines={2}>{front}</Text>
+                              {back ? (
+                                <Text style={styles.modalCardBack} numberOfLines={1}>{back}</Text>
+                              ) : null}
+                            </View>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => openWordVarModal(item)}
+                            style={styles.wordVarBtn}
+                            hitSlop={8}
+                          >
+                            <Text style={styles.wordVarBtnText}>✨</Text>
+                          </Pressable>
+                        </View>
+                      );
+                    })}
+                  </ScrollView>
+                )}
 
-            {/* Select all / Clear all */}
-            {!subDeckLoading && subDeckCards.length > 0 && (
-              <View style={styles.modalSelectRow}>
-                <Pressable
-                  onPress={() => setSubDeckSelected(new Set(subDeckCards.map((c: any) => String(c._id))))}
-                  style={styles.modalSelectBtn}
-                >
-                  <Text style={styles.modalSelectBtnText}>Select all</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setSubDeckSelected(new Set())}
-                  style={styles.modalSelectBtn}
-                >
-                  <Text style={styles.modalSelectBtnText}>Clear all</Text>
-                </Pressable>
-                <Text style={styles.modalSelectionCount}>
-                  {subDeckSelected.size} selected
-                </Text>
-              </View>
+                <View style={styles.modalFooter}>
+                  <Pressable
+                    onPress={() => { setSubDeckModalVisible(false); setSubDeckView("cards"); }}
+                    style={styles.modalCancelBtn}
+                  >
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable onPress={applySubDeck} style={styles.modalApplyBtn}>
+                    <Text style={styles.modalApplyText}>
+                      Apply{subDeckSelected.size > 0 ? ` (${subDeckSelected.size})` : " (all)"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </>
             )}
 
-            {/* Card list */}
-            {subDeckLoading ? (
-              <ActivityIndicator color={LucidTheme.accent} style={{ marginVertical: 24 }} />
-            ) : subDeckCards.length === 0 ? (
-              <Text style={styles.emptyText}>No cards found in this deck.</Text>
-            ) : (
-              <ScrollView style={styles.modalList} nestedScrollEnabled>
-                {subDeckCards.map((item) => {
-                  const id = String(item._id);
-                  const checked = subDeckSelected.has(id);
-                  const front = item.front ?? item.note?.fields?.[0] ?? "(no content)";
-                  const back = item.back ?? item.note?.fields?.[1] ?? "";
-                  return (
-                    <View key={id} style={[styles.modalCardRow, checked && styles.modalCardRowChecked]}>
-                      <Pressable
-                        onPress={() => {
-                          setSubDeckSelected((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(id)) next.delete(id);
-                            else next.add(id);
-                            return next;
-                          });
-                        }}
-                        style={styles.modalCardCheckArea}
-                      >
-                        <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-                          {checked && <Text style={styles.checkboxMark}>✓</Text>}
-                        </View>
-                        <View style={styles.modalCardInfo}>
-                          <Text style={styles.modalCardFront} numberOfLines={2}>
-                            {front}
-                          </Text>
-                          {back ? (
-                            <Text style={styles.modalCardBack} numberOfLines={1}>
-                              {back}
-                            </Text>
-                          ) : null}
-                        </View>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => openWordVarModal(item)}
-                        style={styles.wordVarBtn}
-                        hitSlop={6}
-                      >
-                        <Text style={styles.wordVarBtnText}>✨</Text>
-                      </Pressable>
+            {/* ── VIEW 2: word variation generator ── */}
+            {subDeckView === "wordvar" && (
+              <>
+                <View style={styles.modalHeader}>
+                  <Pressable onPress={() => setSubDeckView("cards")} style={styles.modalCloseBtn}>
+                    <Text style={[styles.modalCloseText, { fontSize: 15 }]}>← Back</Text>
+                  </Pressable>
+                  <View style={styles.modalHeaderLeft}>
+                    <Text style={[styles.modalTitle, { marginLeft: 8 }]}>Generate Variations</Text>
+                    <Text style={[styles.modalSubtitle, { marginLeft: 8 }]}>Tap a word to focus on it</Text>
+                  </View>
+                </View>
+
+                <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+                  {wordVarCard && (
+                    <View style={styles.wordVarSourceCard}>
+                      <Text style={styles.wordVarSourceLabel}>Source card</Text>
+                      <Text style={styles.wordVarSourceText}>
+                        {wordVarCard.front ?? wordVarCard.note?.fields?.[0] ?? ""}
+                      </Text>
                     </View>
-                  );
-                })}
-              </ScrollView>
+                  )}
+
+                  {wordVarCard && !generationResults && (
+                    <>
+                      <Text style={styles.wordVarPickLabel}>Tap a word:</Text>
+                      <View style={styles.wordChipRow}>
+                        {(wordVarCard.front ?? wordVarCard.note?.fields?.[0] ?? "")
+                          .split(/\s+/)
+                          .filter(Boolean)
+                          .map((word: string, idx: number) => {
+                            const isSelected = wordVarSelected === word;
+                            return (
+                              <Pressable
+                                key={`${word}-${idx}`}
+                                onPress={() => setWordVarSelected(isSelected ? null : word)}
+                                style={[styles.wordChip, isSelected && styles.wordChipSelected]}
+                              >
+                                <Text style={[styles.wordChipText, isSelected && styles.wordChipTextSelected]}>
+                                  {word}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                      </View>
+
+                      {wordVarSelected && (
+                        <View style={styles.wordVarSelectedRow}>
+                          <Text style={styles.wordVarSelectedLabel}>
+                            Selected: <Text style={styles.wordVarSelectedWord}>"{wordVarSelected}"</Text>
+                          </Text>
+                        </View>
+                      )}
+
+                      <Pressable
+                        onPress={handleGenerate}
+                        disabled={!wordVarSelected || generating}
+                        style={[styles.generateBtn, (!wordVarSelected || generating) && { opacity: 0.4 }]}
+                      >
+                        <Text style={styles.generateBtnText}>
+                          {generating ? "Generating..." : "✨ Generate 2 cards"}
+                        </Text>
+                      </Pressable>
+                      {generating && (
+                        <ActivityIndicator color={LucidTheme.accent} style={{ marginTop: 8 }} />
+                      )}
+                    </>
+                  )}
+
+                  {generationResults && (
+                    <>
+                      <Text style={styles.wordVarPickLabel}>Preview — front / back:</Text>
+                      {generationResults.map((v, idx) => (
+                        <View key={idx} style={styles.variationCard}>
+                          <View style={styles.variationCardSide}>
+                            <Text style={styles.variationSideLabel}>FRONT</Text>
+                            <Text style={styles.variationFront}>{v.english}</Text>
+                          </View>
+                          <View style={styles.variationDivider} />
+                          <View style={styles.variationCardSide}>
+                            <Text style={styles.variationSideLabel}>BACK</Text>
+                            {v.transliteration ? (
+                              <Text style={styles.variationPinyin}>{v.transliteration}</Text>
+                            ) : null}
+                            <Text style={styles.variationChinese}>{v.translation}</Text>
+                          </View>
+                        </View>
+                      ))}
+                      <Pressable
+                        onPress={() => { setGenerationResults(null); setWordVarSelected(null); }}
+                        style={styles.regenBtn}
+                      >
+                        <Text style={styles.regenBtnText}>← Try a different word</Text>
+                      </Pressable>
+                    </>
+                  )}
+                </ScrollView>
+
+                <View style={styles.modalFooter}>
+                  <Pressable onPress={() => setSubDeckView("cards")} style={styles.modalCancelBtn}>
+                    <Text style={styles.modalCancelText}>Back</Text>
+                  </Pressable>
+                  {generationResults && (
+                    <Pressable
+                      onPress={handleAddVariations}
+                      disabled={addingVariations}
+                      style={[styles.modalApplyBtn, addingVariations && { opacity: 0.6 }]}
+                    >
+                      <Text style={styles.modalApplyText}>
+                        {addingVariations ? "Adding..." : "Add 2 cards to sub-deck"}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              </>
             )}
 
-            {/* Footer buttons */}
-            <View style={styles.modalFooter}>
-              <Pressable
-                onPress={() => setSubDeckModalVisible(false)}
-                style={styles.modalCancelBtn}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={applySubDeck}
-                style={styles.modalApplyBtn}
-              >
-                <Text style={styles.modalApplyText}>
-                  Apply{subDeckSelected.size > 0 ? ` (${subDeckSelected.size})` : " (all)"}
-                </Text>
-              </Pressable>
-            </View>
           </View>
         </View>
       </Modal>
