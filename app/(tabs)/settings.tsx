@@ -639,6 +639,21 @@ export default function SettingsScreen() {
         </Pressable>
       )}
 
+      {/* HELP & SUPPORT */}
+      <Pressable
+        style={styles.referralCard}
+        onPress={() => router.push("/screens/HelpScreen")}
+      >
+        <View style={styles.referralLeft}>
+          <Text style={styles.referralIcon}>❓</Text>
+          <View>
+            <Text style={styles.referralTitle}>Help & Support</Text>
+            <Text style={styles.referralSub}>FAQs and feature guides</Text>
+          </View>
+        </View>
+        <Text style={styles.referralArrow}>→</Text>
+      </Pressable>
+
       {/* ACCOUNT */}
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Account</Text>
