@@ -33,6 +33,8 @@ class ScrollAccessibilityService : AccessibilityService() {
     if (now - lastOverlayTime < cooldown) return
     lastOverlayTime = now
 
+    if (!isBlockingEnabled()) return
+
     // Parents must explicitly enable self-blocking to be blocked on their own device
     if (isParentWithoutSelfBlock()) return
 
@@ -47,6 +49,11 @@ class ScrollAccessibilityService : AccessibilityService() {
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     intent.putExtra("blockedPackage", packageName)
     startActivity(intent)
+  }
+
+  private fun isBlockingEnabled(): Boolean {
+    val prefs = getSharedPreferences("scrolltax", Context.MODE_PRIVATE)
+    return prefs.getBoolean("lastBlockDecision", true)
   }
 
   private fun isParentWithoutSelfBlock(): Boolean {

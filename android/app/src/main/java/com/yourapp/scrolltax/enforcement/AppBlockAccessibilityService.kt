@@ -52,6 +52,7 @@ class AppBlockAccessibilityService : AccessibilityService() {
 
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
     if (event == null) return
+    if (!isBlockingEnabled()) return
     if (!isStrictMode()) return
     if (isParentWithoutSelfBlock()) return
 
@@ -67,6 +68,7 @@ class AppBlockAccessibilityService : AccessibilityService() {
   }
 
   private fun checkForegroundViaUsageStats() {
+    if (!isBlockingEnabled()) return
     if (!isStrictMode()) return
     if (isParentWithoutSelfBlock()) return
     if (isUnlocked()) return
@@ -105,6 +107,11 @@ class AppBlockAccessibilityService : AccessibilityService() {
     } catch (e: Exception) {
       null
     }
+  }
+
+  private fun isBlockingEnabled(): Boolean {
+    val prefs = getSharedPreferences("scrolltax", Context.MODE_PRIVATE)
+    return prefs.getBoolean("lastBlockDecision", true)
   }
 
   private fun isStrictMode(): Boolean {

@@ -13,6 +13,10 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     override func intervalDidStart(for activity: DeviceActivityName) {
         // Reapply shield when the daily monitoring interval restarts (e.g. after device reboot).
         // Do NOT send a notification here — the user hasn't hit their limit yet.
+        // Respect the user's blocking toggle: if they disabled blocking, do not re-apply.
+        let defaults = UserDefaults(suiteName: appGroupSuite)
+        let blockingEnabled = defaults?.object(forKey: "blockingEnabled") as? Bool ?? true
+        guard blockingEnabled else { return }
         applyShield()
     }
 

@@ -130,6 +130,11 @@ public class ScreenTimeModule: Module {
     }
 
     AsyncFunction("applyShield") { () -> [String: Any] in
+      // Mark blocking as enabled so the DeviceActivity extension knows to re-apply
+      // the shield on interval resets (midnight, reboot).
+      self.sharedDefaults?.set(true, forKey: "blockingEnabled")
+      self.sharedDefaults?.synchronize()
+
       // Skip re-shielding during an active unlock window so the user keeps access
       // to blocked apps after completing their flashcard session.
       let expiresAt = self.sharedDefaults?.double(forKey: unlockKey) ?? 0
@@ -158,6 +163,10 @@ public class ScreenTimeModule: Module {
     }
 
     AsyncFunction("clearShield") { () -> [String: Any] in
+      // Mark blocking as disabled so the DeviceActivity extension won't re-apply
+      // the shield on interval resets (midnight, reboot) while blocking is off.
+      self.sharedDefaults?.set(false, forKey: "blockingEnabled")
+      self.sharedDefaults?.synchronize()
       let store = ManagedSettingsStore()
       store.shield.applications = nil
       store.shield.applicationCategories = nil
