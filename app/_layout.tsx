@@ -148,11 +148,10 @@ async function handleDeepLink(url: string) {
           }
         }
 
-        // 🔔 Request notification permission on iOS as early as possible so
-        // the DeviceActivityMonitor extension can deliver threshold alerts.
-        if (Platform.OS === "ios") {
-          Notifications.requestPermissionsAsync().catch(() => {});
-        }
+        // 🔔 Request notification permission on both platforms.
+        // iOS: DeviceActivityMonitor extension needs it for threshold alerts.
+        // Android 13+: POST_NOTIFICATIONS is a runtime permission; must request it.
+        await Notifications.requestPermissionsAsync().catch(() => {});
 
         // 🔥 STEP 1: permissions
         const ok = await refreshPermissions();
@@ -178,17 +177,6 @@ async function handleDeepLink(url: string) {
               }
             }
 
-            // Register push token with backend (iOS only — Android handled natively)
-            if (Platform.OS === "ios") {
-              try {
-                const { data: pushToken } = await Notifications.getExpoPushTokenAsync({
-                  projectId: "ffef0193-896d-42c0-a995-5cec0cc5e73b",
-                });
-                await registerPushToken(pushToken);
-              } catch (err) {
-                console.log("Push token registration failed:", err);
-              }
-            }
           }
 
           // ⚙️ SETTINGS
@@ -196,6 +184,16 @@ async function handleDeepLink(url: string) {
           if (mode) {
             setEnforcementMode(mode as any);
           }
+        }
+
+        // Register push token — runs regardless of blocking permissions
+        try {
+          const { data: pushToken } = await Notifications.getExpoPushTokenAsync({
+            projectId: "ffef0193-896d-42c0-a995-5cec0cc5e73b",
+          });
+          await registerPushToken(pushToken);
+        } catch (err) {
+          console.log("Push token registration failed:", err);
         }
       } catch (err) {
         console.log("Init error:", err);
@@ -244,7 +242,7 @@ async function handleDeepLink(url: string) {
 
         const authStatus = await getIOSAuthorizationStatus();
         if (authStatus?.status === "approved") {
-          Notifications.requestPermissionsAsync().catch(() => {});
+          await Notifications.requestPermissionsAsync().catch(() => {});
           // Do NOT call startMonitoringBlockedApps() here. DeviceActivity
           // schedules persist across launches — calling stop+start on every
           // cold open resets the usage counter, desynchronizing the
@@ -295,6 +293,13 @@ async function handleDeepLink(url: string) {
         // User is back in the app - cancel any pending motivational notification
         cancelMotivationalNotification().catch(() => {});
         await refreshPermissions();
+
+        // Re-register push token on every foreground. FCM can rotate the token
+        // while the app process is dead — the addPushTokenListener can't fire in
+        // that case, so this is the only reliable way to keep the backend current.
+        Notifications.getExpoPushTokenAsync({ projectId: "ffef0193-896d-42c0-a995-5cec0cc5e73b" })
+          .then(({ data: pushToken }) => registerPushToken(pushToken))
+          .catch(() => {});
 
         if (Platform.OS === "ios") {
           // Reapply shield on every foreground in case ManagedSettingsStore was
@@ -464,6 +469,20 @@ async function handleDeepLink(url: string) {
       setTimeout(() => router.push("/(tabs)/decks"), 120);
     });
 
+    return () => sub.remove();
+  }, []);
+
+  /* =========================
+     🔄 PUSH TOKEN REFRESH
+  ========================= */
+
+  useEffect(() => {
+    // Re-register when FCM rotates the token so the backend always has a valid one
+    const sub = Notifications.addPushTokenListener(({ data: pushToken }) => {
+      import("../services/api").then(({ registerPushToken }) =>
+        registerPushToken(pushToken).catch(() => {})
+      );
+    });
     return () => sub.remove();
   }, []);
 
