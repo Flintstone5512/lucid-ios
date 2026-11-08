@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "120382346231",
+    "project_id": "lucid-837f5",
+    "storage_bucket": "lucid-837f5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:120382346231:android:b7aa3774714cea1d0bd4f2",
+        "android_client_info": {
+          "package_name": "com.yourapp.scrolltax"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA6elI6ZFei1Tp-ZIqP3Ghd3KFFZwCcMWY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
