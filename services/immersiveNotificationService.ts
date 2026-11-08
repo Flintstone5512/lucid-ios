@@ -20,6 +20,38 @@ export interface ImmersiveSettings {
   notifTitleFieldIndex: number;
   notifBodyFieldIndex: number;
   subDeckCardIds: string[];
+  // Deck rotation — moves to the next deck after each full pass through a deck.
+  // Top-level deckId / cardRange* / subDeckCardIds mirror the active entry.
+  rotationEnabled: boolean;
+  rotationDecks: RotationDeck[];
+  rotationIndex: number;
+}
+
+export interface RotationDeck {
+  deckId: string;
+  cardRangeStart: number | null;
+  cardRangeEnd: number | null;
+  subDeckCardIds: string[];
+}
+
+export interface RangeCard {
+  _id: string;
+  index: number; // 1-based position in the whole deck
+  front: string;
+  back: string;
+}
+
+// Cards inside a deck's card range, in the same order the notification queue uses.
+export async function getRangeCards(
+  deckId: string,
+  start: number | null,
+  end: number | null
+): Promise<{ cards: RangeCard[]; total: number }> {
+  const params: Record<string, string> = { deckId };
+  if (start != null) params.start = String(start);
+  if (end != null) params.end = String(end);
+  const res = await api.get("/immersive-notifications/range-cards", { params });
+  return { cards: res.data.cards ?? [], total: res.data.total ?? 0 };
 }
 
 export async function getImmersiveSettings(): Promise<ImmersiveSettings> {
@@ -28,7 +60,7 @@ export async function getImmersiveSettings(): Promise<ImmersiveSettings> {
 }
 
 export async function updateImmersiveSettings(
-  patch: Partial<Omit<ImmersiveSettings, "_id" | "userId" | "retiredCardIds" | "cardQueue" | "lastSentAt">>
+  patch: Partial<Omit<ImmersiveSettings, "_id" | "userId" | "retiredCardIds" | "cardQueue" | "lastSentAt" | "rotationIndex">>
 ): Promise<ImmersiveSettings> {
   const res = await api.put("/immersive-notifications/settings", patch);
   return res.data.settings;

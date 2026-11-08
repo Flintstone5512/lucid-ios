@@ -9,6 +9,7 @@ import {
   Alert,
   TextInput,
   Modal,
+  Switch,
 } from "react-native";
 import { router } from "expo-router";
 import { LucidTheme } from "../../constants/lucidTheme";
@@ -23,7 +24,9 @@ import {
   getDeckFields,
   getWordVariations,
   createVariationCards,
+  getRangeCards,
   ImmersiveSettings,
+  RotationDeck,
   WordVariation,
 } from "../../services/immersiveNotificationService";
 import api from "../../services/api";
@@ -68,6 +71,12 @@ export default function ImmersiveNotificationsScreen() {
   const [subDeckCards, setSubDeckCards] = useState<any[]>([]);
   const [subDeckLoading, setSubDeckLoading] = useState(false);
   const [subDeckSelected, setSubDeckSelected] = useState<Set<string>>(new Set());
+  // Card range the modal was opened with (null = open end) and deck size
+  const [subDeckRange, setSubDeckRange] = useState<{ start: number | null; end: number | null; total: number }>({
+    start: null,
+    end: null,
+    total: 0,
+  });
 
   // Word variation view (inside sub-deck modal — no separate Modal)
   const [subDeckView, setSubDeckView] = useState<"cards" | "wordvar">("cards");
@@ -152,15 +161,55 @@ export default function ImmersiveNotificationsScreen() {
     }
   }
 
+  function parseRangeText(text: string): number | null | "invalid" {
+    const t = text.trim();
+    if (!t) return null;
+    const n = parseInt(t, 10);
+    return isNaN(n) || n < 1 ? "invalid" : n;
+  }
+
+  // Opens the sub-deck picker showing only the cards inside the deck's card
+  // range (the single-deck Card Range inputs, or the deck's own range when in
+  // rotation mode).
   async function openSubDeckModal(deck: any) {
+    if (!settings) return;
+    let start: number | null;
+    let end: number | null;
+    let saved: string[];
+
+    if (settings.rotationEnabled) {
+      const entry = (settings.rotationDecks ?? []).find((e) => String(e.deckId) === String(deck._id));
+      start = entry?.cardRangeStart ?? null;
+      end = entry?.cardRangeEnd ?? null;
+      saved = entry?.subDeckCardIds ?? [];
+    } else {
+      const s = parseRangeText(rangeStartText);
+      const e = parseRangeText(rangeEndText);
+      if (s === "invalid" || e === "invalid") {
+        Alert.alert("Invalid range", "Fix the Card Range numbers before picking a sub-deck.");
+        return;
+      }
+      start = s;
+      end = e;
+      saved = settings.subDeckCardIds ?? [];
+    }
+    if (start != null && end != null && start > end) {
+      Alert.alert("Invalid range", "Start card must be less than or equal to end card.");
+      return;
+    }
+
     setSubDeckModalDeck(deck);
+    setSubDeckRange({ start, end, total: deck.cardCount ?? 0 });
+    setSubDeckCards([]);
     setSubDeckLoading(true);
     setSubDeckModalVisible(true);
     try {
-      const res = await api.get(`/cards/${deck._id}`);
-      const cards: any[] = res.data?.cards ?? res.data ?? [];
+      const { cards, total } = await getRangeCards(String(deck._id), start, end);
       setSubDeckCards(cards);
-      setSubDeckSelected(new Set((settings?.subDeckCardIds ?? []).map(String)));
+      setSubDeckRange({ start, end, total });
+      // Keep previously-picked cards outside the range too (e.g. AI variation
+      // cards, which are appended to the end of the deck); they're listed separately.
+      setSubDeckSelected(new Set(saved.map(String)));
     } catch (err: any) {
       setSubDeckCards([]);
       Alert.alert("Error", err?.response?.data?.error ?? err?.message ?? "Could not load cards.");
@@ -171,9 +220,73 @@ export default function ImmersiveNotificationsScreen() {
 
   function applySubDeck() {
     const ids = Array.from(subDeckSelected);
-    patch({ subDeckCardIds: ids });
+    if (settings?.rotationEnabled && subDeckModalDeck) {
+      updateRotationEntry(String(subDeckModalDeck._id), { subDeckCardIds: ids });
+    } else {
+      patch({ subDeckCardIds: ids });
+    }
     setSubDeckModalVisible(false);
     setSubDeckView("cards");
+  }
+
+  // ─── Deck rotation ──────────────────────────────────────────────────────────
+
+  function updateRotationEntry(deckId: string, changes: Partial<RotationDeck>) {
+    setSettings((prev) =>
+      prev
+        ? {
+            ...prev,
+            rotationDecks: (prev.rotationDecks ?? []).map((e) =>
+              String(e.deckId) === deckId ? { ...e, ...changes } : e
+            ),
+          }
+        : prev
+    );
+  }
+
+  function toggleRotationDeck(deck: any) {
+    if (!settings) return;
+    const id = String(deck._id);
+    const current = settings.rotationDecks ?? [];
+    const exists = current.some((e) => String(e.deckId) === id);
+    patch({
+      rotationDecks: exists
+        ? current.filter((e) => String(e.deckId) !== id)
+        : [...current, { deckId: id, cardRangeStart: null, cardRangeEnd: null, subDeckCardIds: [] }],
+    });
+  }
+
+  function handleRotationToggle(enabled: boolean) {
+    if (!settings) return;
+    if (enabled) {
+      // Seed the rotation with the currently selected deck and its range/sub-deck.
+      let rotationDecks = settings.rotationDecks ?? [];
+      if (rotationDecks.length === 0 && settings.deckId) {
+        const s = parseRangeText(rangeStartText);
+        const e = parseRangeText(rangeEndText);
+        rotationDecks = [
+          {
+            deckId: String(settings.deckId),
+            cardRangeStart: s === "invalid" ? null : s,
+            cardRangeEnd: e === "invalid" ? null : e,
+            subDeckCardIds: settings.subDeckCardIds ?? [],
+          },
+        ];
+      }
+      patch({ rotationEnabled: true, rotationDecks });
+    } else {
+      // Fall back to single-deck mode on the deck the rotation is currently on.
+      const entry = (settings.rotationDecks ?? []).find(
+        (e) => String(e.deckId) === String(settings.deckId)
+      );
+      if (entry) {
+        setRangeStartText(entry.cardRangeStart != null ? String(entry.cardRangeStart) : "");
+        setRangeEndText(entry.cardRangeEnd != null ? String(entry.cardRangeEnd) : "");
+        patch({ rotationEnabled: false, subDeckCardIds: entry.subDeckCardIds ?? [] });
+      } else {
+        patch({ rotationEnabled: false });
+      }
+    }
   }
 
   function openWordVarModal(card: any) {
@@ -184,7 +297,7 @@ export default function ImmersiveNotificationsScreen() {
   }
 
   async function handleGenerate() {
-    if (!wordVarSelected || !wordVarCard || !settings?.deckId) return;
+    if (!wordVarSelected || !wordVarCard || !subDeckModalDeck) return;
     const context = wordVarCard.front ?? wordVarCard.note?.fields?.[0] ?? "";
     const cleanWord = wordVarSelected.replace(/[.,!?;:'"()[\]]/g, "").trim();
     setGenerating(true);
@@ -199,11 +312,11 @@ export default function ImmersiveNotificationsScreen() {
   }
 
   async function handleAddVariations() {
-    if (!generationResults || !settings?.deckId) return;
+    if (!generationResults || !subDeckModalDeck) return;
     setAddingVariations(true);
     try {
       const newCards = await createVariationCards({
-        deckId: settings.deckId,
+        deckId: String(subDeckModalDeck._id),
         variations: generationResults,
       });
       setSubDeckSelected((prev) => {
@@ -243,6 +356,21 @@ export default function ImmersiveNotificationsScreen() {
       return;
     }
 
+    const rotationDecks = settings.rotationDecks ?? [];
+    if (settings.rotationEnabled) {
+      if (rotationDecks.length === 0) {
+        Alert.alert("Deck Rotation", "Select at least one deck to rotate through.");
+        return;
+      }
+      for (const e of rotationDecks) {
+        if (e.cardRangeStart != null && e.cardRangeEnd != null && e.cardRangeStart > e.cardRangeEnd) {
+          const name = decks.find((d) => String(d._id) === String(e.deckId))?.name ?? "a deck";
+          Alert.alert("Invalid range", `Start card must be ≤ end card for ${name}.`);
+          return;
+        }
+      }
+    }
+
     try {
       setSaving(true);
       const updated = await updateImmersiveSettings({
@@ -256,11 +384,17 @@ export default function ImmersiveNotificationsScreen() {
         cardRangeStart: parsedStart,
         cardRangeEnd: parsedEnd,
         subDeckCardIds: settings.subDeckCardIds ?? [],
+        rotationEnabled: !!settings.rotationEnabled,
+        rotationDecks,
       });
       setSettings(updated);
+      if (!updated.rotationEnabled) {
+        setRangeStartText(updated.cardRangeStart != null ? String(updated.cardRangeStart) : "");
+        setRangeEndText(updated.cardRangeEnd != null ? String(updated.cardRangeEnd) : "");
+      }
       Alert.alert("Saved", "Immersive Cram Session settings updated.");
-    } catch {
-      Alert.alert("Error", "Failed to save settings.");
+    } catch (err: any) {
+      Alert.alert("Error", err?.response?.data?.error ?? "Failed to save settings.");
     } finally {
       setSaving(false);
     }
@@ -350,6 +484,15 @@ export default function ImmersiveNotificationsScreen() {
 
   const selectedDeck = decks.find((d) => String(d._id) === String(settings.deckId));
   const subDeckCount = settings.subDeckCardIds?.length ?? 0;
+  const rotationOn = !!settings.rotationEnabled;
+  const rotationDecks = settings.rotationDecks ?? [];
+  // The deck the server is currently sending from (only meaningful once saved).
+  const activeRotationPos = rotationDecks.findIndex(
+    (e) => String(e.deckId) === String(settings.deckId)
+  );
+  // Selected sub-deck cards not shown in the modal's range list.
+  const visibleCardIds = new Set(subDeckCards.map((c: any) => String(c._id)));
+  const outOfRangeSelected = Array.from(subDeckSelected).filter((id) => !visibleCardIds.has(id));
 
   return (
     <>
@@ -400,6 +543,11 @@ export default function ImmersiveNotificationsScreen() {
                 {settings.paused ? "⏸  Paused — Tap to Resume" : "▶  Running — Tap to Pause"}
               </Text>
             </Pressable>
+            {rotationOn && activeRotationPos >= 0 && (
+              <Text style={styles.progressHint}>
+                Rotation: deck {activeRotationPos + 1} of {rotationDecks.length} — {selectedDeck?.name ?? "Unknown"}
+              </Text>
+            )}
             {settings.currentIndex > 0 && (
               <Text style={styles.progressHint}>
                 Position: card {settings.currentIndex} of {settings.cardQueue?.length ?? "?"} in current cycle
@@ -430,14 +578,100 @@ export default function ImmersiveNotificationsScreen() {
           </View>
         )}
 
+        {/* DECK ROTATION */}
+        <View style={[styles.card, rotationOn && styles.rotationCardOn]}>
+          <View style={styles.rotationHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sectionTitle, { marginBottom: 2 }]}>Deck Rotation</Text>
+              <Text style={styles.hint}>
+                {rotationOn
+                  ? rotationDecks.length === 0
+                    ? "Select decks below to rotate through."
+                    : `${rotationDecks.length} deck${rotationDecks.length !== 1 ? "s" : ""} — moves to the next deck after each full pass. Each deck has its own range and sub-deck.`
+                  : "Cycle through several decks, one full pass at a time."}
+              </Text>
+            </View>
+            <Switch
+              value={rotationOn}
+              onValueChange={handleRotationToggle}
+              trackColor={{ false: "#2a2e36", true: "#D86732" }}
+              thumbColor={rotationOn ? "#fff" : "#A9BDDB"}
+            />
+          </View>
+        </View>
+
         {/* DECK PICKER */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Select Deck</Text>
+          <Text style={styles.sectionTitle}>{rotationOn ? "Rotation Decks" : "Select Deck"}</Text>
           <Text style={styles.hint}>
-            Cards in this deck will cycle through your notifications. Tap the filter icon on the selected deck to pick a sub-deck.
+            {rotationOn
+              ? "Tap decks to add them in rotation order. Set an optional card range per deck, then tap Filter to pick a sub-deck from within that range."
+              : "Cards in this deck will cycle through your notifications. Set a Card Range below, then tap Filter on the selected deck to pick a sub-deck from that range."}
           </Text>
           {decks.length === 0 ? (
             <Text style={styles.emptyText}>No decks found.</Text>
+          ) : rotationOn ? (
+            decks.map((deck) => {
+              const pos = rotationDecks.findIndex((e) => String(e.deckId) === String(deck._id));
+              const entry = pos >= 0 ? rotationDecks[pos] : null;
+              const isCurrent = !!entry && pos === activeRotationPos;
+              const subCount = entry?.subDeckCardIds?.length ?? 0;
+              const rangeLabel =
+                entry && (entry.cardRangeStart != null || entry.cardRangeEnd != null)
+                  ? `Cards ${entry.cardRangeStart ?? 1}–${entry.cardRangeEnd ?? deck.cardCount ?? "end"}`
+                  : `${deck.cardCount ?? 0} cards`;
+              return (
+                <View key={deck._id} style={[styles.rotationDeckBlock, entry && styles.deckRowSelected]}>
+                  <Pressable onPress={() => toggleRotationDeck(deck)} style={styles.rotationDeckRow}>
+                    <View style={[styles.rotationBadge, entry && styles.rotationBadgeOn]}>
+                      {entry && <Text style={styles.rotationBadgeText}>{pos + 1}</Text>}
+                    </View>
+                    <View style={styles.deckInfo}>
+                      <Text style={[styles.deckName, entry && styles.deckNameSelected]}>{deck.name}</Text>
+                      <Text style={styles.deckCount}>
+                        {entry
+                          ? `${rangeLabel}${subCount > 0 ? ` · Sub-deck: ${subCount}` : ""}`
+                          : `${deck.cardCount ?? 0} cards`}
+                      </Text>
+                    </View>
+                    {isCurrent && <Text style={styles.nowPlaying}>▶ Now</Text>}
+                  </Pressable>
+
+                  {entry && (
+                    <View style={styles.rotationEntryControls}>
+                      <TextInput
+                        style={styles.rotationRangeInput}
+                        value={entry.cardRangeStart != null ? String(entry.cardRangeStart) : ""}
+                        onChangeText={(t) => {
+                          const n = parseRangeText(t);
+                          updateRotationEntry(String(deck._id), { cardRangeStart: n === "invalid" ? null : n });
+                        }}
+                        keyboardType="number-pad"
+                        placeholder="From"
+                        placeholderTextColor="#4a5a7a"
+                        returnKeyType="done"
+                      />
+                      <Text style={[styles.rangeSep, { paddingBottom: 0 }]}>—</Text>
+                      <TextInput
+                        style={styles.rotationRangeInput}
+                        value={entry.cardRangeEnd != null ? String(entry.cardRangeEnd) : ""}
+                        onChangeText={(t) => {
+                          const n = parseRangeText(t);
+                          updateRotationEntry(String(deck._id), { cardRangeEnd: n === "invalid" ? null : n });
+                        }}
+                        keyboardType="number-pad"
+                        placeholder={String(deck.cardCount ?? "To")}
+                        placeholderTextColor="#4a5a7a"
+                        returnKeyType="done"
+                      />
+                      <Pressable onPress={() => openSubDeckModal(deck)} style={styles.subDeckBtn} hitSlop={8}>
+                        <Text style={styles.subDeckBtnText}>{subCount > 0 ? "◧ Edit" : "◧ Filter"}</Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+              );
+            })
           ) : (
             decks.map((deck) => {
               const selected = String(deck._id) === String(settings.deckId);
@@ -491,6 +725,7 @@ export default function ImmersiveNotificationsScreen() {
             <Text style={styles.sectionTitle}>Notification Content</Text>
             <Text style={styles.hint}>
               Choose which field appears as the notification title and body.
+              {rotationOn ? " Applies to every deck in the rotation (preview shows the current deck)." : ""}
             </Text>
 
             {fieldsLoading ? (
@@ -563,7 +798,8 @@ export default function ImmersiveNotificationsScreen() {
           </View>
         )}
 
-        {/* CARD RANGE */}
+        {/* CARD RANGE (single-deck mode; rotation decks set ranges inline above) */}
+        {!rotationOn && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Card Range</Text>
           <Text style={styles.hint}>
@@ -602,7 +838,13 @@ export default function ImmersiveNotificationsScreen() {
               <Text style={styles.clearRange}>Clear range (use all cards)</Text>
             </Pressable>
           ) : null}
+          {subDeckCount > 0 && (
+            <Text style={styles.rangeSubDeckNote}>
+              Sub-deck picks come from this range. Changing the range without re-picking trims sub-deck cards outside it when you save.
+            </Text>
+          )}
         </View>
+        )}
 
         {/* INTERVAL */}
         <View style={styles.card}>
@@ -861,7 +1103,12 @@ export default function ImmersiveNotificationsScreen() {
                   <View style={styles.modalHeaderLeft}>
                     <Text style={styles.modalTitle}>Filter Cards</Text>
                     {subDeckModalDeck && (
-                      <Text style={styles.modalSubtitle}>{subDeckModalDeck.name}</Text>
+                      <Text style={styles.modalSubtitle}>
+                        {subDeckModalDeck.name}
+                        {subDeckRange.start != null || subDeckRange.end != null
+                          ? ` · Cards ${subDeckRange.start ?? 1}–${Math.min(subDeckRange.end ?? subDeckRange.total, subDeckRange.total)} of ${subDeckRange.total}`
+                          : ` · All ${subDeckRange.total} cards`}
+                      </Text>
                     )}
                   </View>
                   <Pressable
@@ -873,13 +1120,39 @@ export default function ImmersiveNotificationsScreen() {
                 </View>
 
                 <Text style={styles.modalHint}>
-                  Select cards for your notification rotation. Tap ✨ on a card to generate AI variations from a word. Hit Save Settings after applying.
+                  Showing only the cards in your card range. Select cards for your notification rotation. Tap ✨ on a card to generate AI variations from a word. Hit Save Settings after applying.
                 </Text>
+
+                {!subDeckLoading && outOfRangeSelected.length > 0 && (
+                  <View style={styles.outOfRangeRow}>
+                    <Text style={styles.outOfRangeText}>
+                      +{outOfRangeSelected.length} selected card{outOfRangeSelected.length !== 1 ? "s" : ""} outside this range (e.g. AI-generated)
+                    </Text>
+                    <Pressable
+                      onPress={() =>
+                        setSubDeckSelected((prev) => {
+                          const next = new Set(prev);
+                          outOfRangeSelected.forEach((id) => next.delete(id));
+                          return next;
+                        })
+                      }
+                      hitSlop={8}
+                    >
+                      <Text style={styles.outOfRangeRemove}>Remove</Text>
+                    </Pressable>
+                  </View>
+                )}
 
                 {!subDeckLoading && subDeckCards.length > 0 && (
                   <View style={styles.modalSelectRow}>
                     <Pressable
-                      onPress={() => setSubDeckSelected(new Set(subDeckCards.map((c: any) => String(c._id))))}
+                      onPress={() =>
+                        setSubDeckSelected((prev) => {
+                          const next = new Set(prev);
+                          subDeckCards.forEach((c: any) => next.add(String(c._id)));
+                          return next;
+                        })
+                      }
                       style={styles.modalSelectBtn}
                     >
                       <Text style={styles.modalSelectBtnText}>Select all</Text>
@@ -899,7 +1172,7 @@ export default function ImmersiveNotificationsScreen() {
                 {subDeckLoading ? (
                   <ActivityIndicator color={LucidTheme.accent} style={{ marginVertical: 24 }} />
                 ) : subDeckCards.length === 0 ? (
-                  <Text style={styles.emptyText}>No cards found in this deck.</Text>
+                  <Text style={styles.emptyText}>No cards found in this range.</Text>
                 ) : (
                   <ScrollView style={styles.modalList}>
                     {subDeckCards.map((item) => {
@@ -924,7 +1197,12 @@ export default function ImmersiveNotificationsScreen() {
                               {checked && <Text style={styles.checkboxMark}>✓</Text>}
                             </View>
                             <View style={styles.modalCardInfo}>
-                              <Text style={styles.modalCardFront} numberOfLines={2}>{front}</Text>
+                              <Text style={styles.modalCardFront} numberOfLines={2}>
+                                <Text style={styles.modalCardIndex}>
+                                  {item.index != null ? `#${item.index}  ` : "✨ new  "}
+                                </Text>
+                                {front}
+                              </Text>
                               {back ? (
                                 <Text style={styles.modalCardBack} numberOfLines={1}>{back}</Text>
                               ) : null}
@@ -1195,6 +1473,99 @@ const styles = StyleSheet.create({
   },
   deckRowSelected: {
     borderColor: LucidTheme.accent,
+  },
+  rotationCardOn: {
+    borderWidth: 1,
+    borderColor: "rgba(216, 103, 50, 0.45)",
+  },
+  rotationHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  rotationDeckBlock: {
+    borderRadius: 10,
+    backgroundColor: "#111d36",
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  rotationDeckRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    gap: 12,
+  },
+  rotationBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#4a5568",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rotationBadgeOn: {
+    borderColor: LucidTheme.accent,
+    backgroundColor: LucidTheme.accent,
+  },
+  rotationBadgeText: {
+    color: "#0e1424",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  nowPlaying: {
+    color: "#D86732",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  rotationEntryControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+  },
+  rotationRangeInput: {
+    flex: 1,
+    backgroundColor: "#0b1528",
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+    borderWidth: 1,
+    borderColor: "#2a3a5a",
+    textAlign: "center",
+  },
+  rangeSubDeckNote: {
+    color: LucidTheme.sub,
+    fontSize: 11,
+    marginTop: 10,
+    lineHeight: 15,
+  },
+  outOfRangeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 8,
+  },
+  outOfRangeText: {
+    color: LucidTheme.sub,
+    fontSize: 12,
+    flex: 1,
+  },
+  outOfRangeRemove: {
+    color: LucidTheme.accent,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  modalCardIndex: {
+    color: LucidTheme.sub,
+    fontSize: 11,
+    fontWeight: "700",
   },
   deckInfo: {
     flex: 1,

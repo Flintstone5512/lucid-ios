@@ -198,7 +198,8 @@ export async function sendHeartbeat(enforcement?: {
 
 export async function registerPushToken(token: string) {
   try {
-    await api.post("/me/push-token", { token });
+    // platform lets the backend keep one token per device (iOS + Android on the same account)
+    await api.post("/me/push-token", { token, platform: Platform.OS });
   } catch {
     // non-critical — swallow silently
   }

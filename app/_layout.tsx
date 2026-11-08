@@ -24,6 +24,7 @@ import { useRefocusStore } from "../store/useRefocusStore";
 import { ensurePermissions } from "../utils/ensurePermissions";
 
 import * as Notifications from "expo-notifications";
+import * as TaskManager from "expo-task-manager";
 
 // Required by expo-notifications — without this, scheduled notifications
 // are silently suppressed even when permissions are granted.
@@ -36,6 +37,53 @@ Notifications.setNotificationHandler({
     shouldSetBadge: false,
   }),
 });
+
+/* =========================
+   🧹 ANDROID CRAM TRAY PRUNING
+   Android caps each app at ~50 notifications in the tray and silently drops
+   anything posted beyond that — no error on the server or the device. Every
+   immersive cram push is its own tray entry (unique id, and action buttons
+   don't dismiss it), so at short intervals the cap fills up and notifications
+   appear to "stop" until the tray is cleared. Force-stopping the app clears
+   the app's notifications, which is why that used to bring them back.
+   Fix: keep only the newest few cram cards in the tray.
+========================= */
+
+const CRAM_NOTIFICATION_TASK = "CRAM_NOTIFICATION_TASK";
+const CRAM_TRAY_KEEP = 3;
+
+function isCramNotification(n: Notifications.Notification) {
+  const content = n.request.content as any;
+  return content?.data?.type === "immersive_card" || content?.categoryIdentifier === "CRAM_CARD";
+}
+
+async function pruneCramNotifications(keep = CRAM_TRAY_KEEP) {
+  if (Platform.OS !== "android") return;
+  const presented = await Notifications.getPresentedNotificationsAsync();
+  const stale = presented
+    .filter(isCramNotification)
+    .sort((a, b) => b.date - a.date)
+    .slice(keep);
+  await Promise.all(
+    stale.map((n) => Notifications.dismissNotificationAsync(n.request.identifier).catch(() => {}))
+  );
+}
+
+// Runs headlessly for every push received while the app is backgrounded or
+// killed (expo-notifications' FirebaseMessagingDelegate invokes registered
+// tasks), so the tray stays pruned even when the JS UI isn't running.
+// defineTask must be called at module top level.
+TaskManager.defineTask(CRAM_NOTIFICATION_TASK, async () => {
+  try {
+    await pruneCramNotifications();
+  } catch {}
+});
+
+if (Platform.OS === "android") {
+  Notifications.registerTaskAsync(CRAM_NOTIFICATION_TASK).catch((err) =>
+    console.log("⚠️ Could not register cram notification task:", err?.message)
+  );
+}
 
 import {
   applyShield,
@@ -301,6 +349,9 @@ async function handleDeepLink(url: string) {
           .then(({ data: pushToken }) => registerPushToken(pushToken))
           .catch(() => {});
 
+        // Clear out a backlog of cram cards so the Android tray cap can't block new ones.
+        pruneCramNotifications().catch(() => {});
+
         if (Platform.OS === "ios") {
           // Reapply shield on every foreground in case ManagedSettingsStore was
           // cleared by a device restart or system event while the app was backgrounded.
@@ -428,6 +479,14 @@ async function handleDeepLink(url: string) {
       },
     ]).catch(() => {});
 
+    // Android: also prune when a cram card arrives while the app is open.
+    const receivedSub =
+      Platform.OS === "android"
+        ? Notifications.addNotificationReceivedListener((notification) => {
+            if (isCramNotification(notification)) pruneCramNotifications().catch(() => {});
+          })
+        : null;
+
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as any;
       if (data?.type !== "immersive_card") return;
@@ -437,6 +496,10 @@ async function handleDeepLink(url: string) {
 
       // Handle action button taps (fire-and-forget, no UI needed)
       if (actionId && actionId !== Notifications.DEFAULT_ACTION_IDENTIFIER) {
+        // Action buttons don't auto-dismiss on Android — remove the card so
+        // handled cards don't pile up in the tray.
+        Notifications.dismissNotificationAsync(response.notification.request.identifier).catch(() => {});
+
         // Pause action — no cardId needed
         if (actionId === "PAUSE") {
           // Bootstrap auth first: if app was relaunched from killed state, the token
@@ -469,7 +532,10 @@ async function handleDeepLink(url: string) {
       setTimeout(() => router.push("/(tabs)/decks"), 120);
     });
 
-    return () => sub.remove();
+    return () => {
+      sub.remove();
+      receivedSub?.remove();
+    };
   }, []);
 
   /* =========================
