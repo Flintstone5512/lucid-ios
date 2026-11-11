@@ -589,6 +589,24 @@ export default function SessionScreen() {
       return;
     }
 
+    // Redirect to match game when game mode is enabled and a game session is due
+    try {
+      const [gameModeRaw, gameSessionDueRaw] = await Promise.all([
+        AsyncStorage.getItem("lucid_game_mode"),
+        AsyncStorage.getItem("lucid_game_session_due"),
+      ]);
+      if (gameModeRaw === "true" && gameSessionDueRaw === "true") {
+        const deckIdForGame = isRotating
+          ? (shuffleDeckIds[rotationIndex % shuffleDeckIds.length] ?? selectedDeckId)
+          : (isShuffling && shuffleDeckIds.length > 0 ? shuffleDeckIds[0] : selectedDeckId);
+        if (deckIdForGame) {
+          console.log("[SESSION] Game mode — redirecting to match game for deck:", deckIdForGame);
+          router.replace(`/game/${deckIdForGame}?fromSession=1`);
+          return;
+        }
+      }
+    } catch {}
+
     try {
       setLoading(true);
       setNoCardsMode(false);
@@ -680,7 +698,7 @@ export default function SessionScreen() {
         setSpeedTimeLeft(30);
         setBlitzTimeLeft(3);
         setBlitzExpired(false);
-        setSessionXPStart(0);
+        setSessionXPStart(usage?.xp ?? 0);
         setMarathonRound(1);
       }
 
@@ -837,6 +855,8 @@ export default function SessionScreen() {
   async function handleSessionEnd() {
     console.log("[SESSION] handleSessionEnd called");
     AsyncStorage.removeItem("lucid_session_progress").catch(() => {});
+    // Mark next session as a game (game mode redirect checks this)
+    AsyncStorage.setItem("lucid_game_session_due", "true").catch(() => {});
 
     // Advance rotation index so the next session uses the next deck
     if (rotationMode && shuffleDeckIds.length > 0) {
